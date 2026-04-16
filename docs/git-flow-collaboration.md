@@ -104,6 +104,12 @@ git checkout -b feature/party-process
 git push -u origin feature/party-process
 ```
 
+然后去 GitHub：
+
+  1. 创建 PR：feature/xxx -> develop
+  2. Review 后合并到 develop
+  3. 到阶段版本时，再创建 PR：develop -> main
+
 ### 3.2 功能开发过程中
 
 - 只在自己的功能分支上提交代码。
