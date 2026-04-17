@@ -9,6 +9,7 @@
 ├── docs/                     # 项目文档
 │   ├── api/                  # 接口文档
 │   ├── git-flow-collaboration.md
+│   ├── rbac-matrix.md        # 角色与权限讨论/沉淀文档
 │   └── project-structure.md
 ├── frontend/                 # 前端代码
 ├── backend/                  # 后端代码
@@ -43,3 +44,6 @@
 - 数据库迁移脚本统一进入 `database/migrations/`
 - 环境变量模板统一维护在 `.env.example`
 - 本地真实配置只写入 `.env`，不提交到 Git
+- 正式商量接口前，先在 `docs/api/api-spec.md` 整理第一批接口讨论项
+- 正式商量权限前，先在 `docs/rbac-matrix.md` 整理角色、数据范围和资源操作讨论项
+- 前端开工前先看接口清单和 RBAC 讨论项，不要在代码里自行定义最终契约
