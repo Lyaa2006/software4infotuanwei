@@ -1,0 +1,67 @@
+<view class="container">
+  <view class="card">
+    <view class="section_title">模板列表</view>
+    <view class="list" wx:if="{{templates.length}}">
+      <view class="item" wx:for="{{templates}}" wx:key="_id">
+        <view class="item_top">
+          <view class="item_title">{{item.title}}</view>
+          <view class="item_meta">{{item.format.toUpperCase()}}{{item.category ? (' · ' + item.category) : ''}}</view>
+        </view>
+        <view class="item_actions">
+          <button size="mini" class="ghost" data-id="{{item._id}}" bindtap="onDownloadTemplate">下载模板</button>
+          <button size="mini" class="primary" type="primary" data-id="{{item._id}}" bindtap="onGeneratePdf">
+            生成PDF
+          </button>
+        </view>
+      </view>
+    </view>
+    <view class="empty" wx:if="{{!templates.length}}">暂无模板</view>
+  </view>
+
+  <view class="card">
+    <view class="section_title">自动填充字段</view>
+
+    <view class="hint">系统会自动填充：{{nameHint}}</view>
+
+    <view class="form_row">
+      <view class="label">学院（可选）</view>
+      <input class="input" placeholder="例如：信息工程学院" value="{{college}}" bindinput="onCollegeInput" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">连排（可选）</view>
+      <input class="input" placeholder="例如：三连二排" value="{{platoon}}" bindinput="onPlatoonInput" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">请假事由（可选）</view>
+      <textarea class="textarea" placeholder="例如：上课冲突/生病/比赛等" value="{{reason}}" bindinput="onReasonInput" auto-height maxlength="200"></textarea>
+    </view>
+
+    <view class="form_row">
+      <view class="label">请假证明（可选）</view>
+      <textarea class="textarea" placeholder="例如：附门诊证明/比赛通知等" value="{{proof}}" bindinput="onProofInput" auto-height maxlength="200"></textarea>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{isAdmin}}">
+    <view class="section_title">管理员：上传新模板</view>
+    <view class="form_row">
+      <view class="label">标题</view>
+      <input class="input" placeholder="例如：请假条模板（通用）" value="{{uploadTitle}}" bindinput="onUploadTitleInput" maxlength="60" />
+    </view>
+    <view class="form_row">
+      <view class="label">分类</view>
+      <input class="input" placeholder="例如：请假条/证明/预算表" value="{{uploadCategory}}" bindinput="onUploadCategoryInput" maxlength="30" />
+    </view>
+    <view class="form_row">
+      <view class="label">文件</view>
+      <view class="hint">{{uploadFileName || '未选择文件（支持 .html / .txt / .xlsx）'}}</view>
+      <view class="btn_row">
+        <button class="ghost" disabled="{{uploading}}" bindtap="onChooseFile">选择文件</button>
+        <button class="primary" type="primary" loading="{{uploading}}" disabled="{{uploading}}" bindtap="onUpload">上传</button>
+      </view>
+    </view>
+    <view class="hint">提示：xlsx 模板目前仅支持下载，不支持自动转 PDF。</view>
+  </view>
+</view>

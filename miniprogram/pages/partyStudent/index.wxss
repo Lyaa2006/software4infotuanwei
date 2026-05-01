@@ -1,0 +1,134 @@
+page {
+  padding: 32rpx;
+  background-color: #f6f6f6;
+}
+
+.container {
+  font-family: PingFang SC;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+}
+
+.top_head {
+  font-size: 30rpx;
+  color: rgba(0, 0, 0, 0.85);
+  line-height: 46rpx;
+  margin-bottom: 12rpx;
+}
+
+.top_extra {
+  font-size: 28rpx;
+  color: rgba(0, 0, 0, 0.75);
+  line-height: 44rpx;
+}
+
+.section_title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+  margin-bottom: 16rpx;
+}
+
+.progress_scroll {
+  width: 100%;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  padding-bottom: 10rpx;
+}
+
+.progress_item {
+  display: flex;
+  align-items: center;
+}
+
+.node_wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 240rpx;
+}
+
+.node_circle {
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 14rpx;
+  background: #d9d9d9;
+  margin-bottom: 12rpx;
+}
+
+.node_circle.done {
+  background: #22c55e;
+}
+
+.node_circle.current {
+  background: #2563eb;
+}
+
+.node_circle.todo {
+  background: #d9d9d9;
+}
+
+.node_label {
+  font-size: 24rpx;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.55);
+  line-height: 34rpx;
+}
+
+.node_label.done {
+  color: rgba(0, 0, 0, 0.75);
+}
+
+.node_label.current {
+  color: rgba(37, 99, 235, 0.95);
+  font-weight: 600;
+}
+
+.node_line {
+  width: 80rpx;
+  height: 6rpx;
+  border-radius: 4rpx;
+  background: #d9d9d9;
+  margin: 0 10rpx;
+}
+
+.node_line.done {
+  background: rgba(34, 197, 94, 0.7);
+}
+
+.node_line.current {
+  background: rgba(37, 99, 235, 0.55);
+}
+
+.node_line.todo {
+  background: #d9d9d9;
+}
+
+.hint_card {
+  padding-top: 18rpx;
+  padding-bottom: 18rpx;
+}
+
+.hint {
+  font-size: 26rpx;
+  color: rgba(0, 0, 0, 0.55);
+  line-height: 40rpx;
+}
+
+.hint2 {
+  margin-top: 10rpx;
+  font-size: 26rpx;
+  color: rgba(0, 0, 0, 0.7);
+  line-height: 40rpx;
+}
+

@@ -1,0 +1,65 @@
+/**index.wxss**/
+
+page {
+  padding-top: 54rpx;
+  background-color: #f6f6f6;
+  padding-bottom: 60rpx;
+}
+
+.container {
+  font-family: PingFang SC;
+  padding: 0 32rpx;
+}
+
+.title {
+  font-family: PingFang SC;
+  font-weight: 500;
+  color: #000000;
+  font-size: 44rpx;
+  margin-bottom: 40rpx;
+}
+
+.top_tip {
+  font-size: 28rpx;
+  font-family: PingFang SC;
+  font-weight: 400;
+  color: #888888;
+  margin-bottom: 28rpx;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 32rpx;
+}
+
+.field_title {
+  font-size: 28rpx;
+  color: rgba(0, 0, 0, 0.7);
+  margin-top: 22rpx;
+  margin-bottom: 14rpx;
+}
+
+.radio_group {
+  display: flex;
+  gap: 28rpx;
+  align-items: center;
+}
+
+.radio_item {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.input {
+  height: 88rpx;
+  background: #f6f6f6;
+  border-radius: 12rpx;
+  padding: 0 24rpx;
+  font-size: 30rpx;
+}
+
+.submit {
+  margin-top: 36rpx;
+}
