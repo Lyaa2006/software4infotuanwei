@@ -1,0 +1,51 @@
+<view class="container">
+  <view class="card">
+    <view class="section_title">提问</view>
+    <textarea class="textarea" placeholder="请输入你的问题" value="{{question}}" bindinput="onQuestionInput" auto-height maxlength="500"></textarea>
+    <button class="primary" type="primary" loading="{{asking}}" disabled="{{asking}}" bindtap="onAsk">提交问题</button>
+
+    <view class="section_title" wx:if="{{answer}}">答案</view>
+    <view class="answer" wx:if="{{answer}}">{{answer}}</view>
+    <view class="meta" wx:if="{{matchedQuestion}}">匹配问题：{{matchedQuestion}}</view>
+  </view>
+
+  <view class="card" wx:if="{{isAdmin}}">
+    <view class="section_title">知识库管理</view>
+
+    <view class="form_row">
+      <view class="label">{{editingId ? '编辑问题' : '新增问题'}}</view>
+      <textarea class="textarea" placeholder="标准问题" value="{{formQuestion}}" bindinput="onFormQuestionInput" auto-height maxlength="500"></textarea>
+    </view>
+
+    <view class="form_row">
+      <view class="label">标准答案</view>
+      <textarea class="textarea" placeholder="标准答案" value="{{formAnswer}}" bindinput="onFormAnswerInput" auto-height maxlength="2000"></textarea>
+    </view>
+
+    <view class="form_row">
+      <view class="label">关键词（用逗号分隔）</view>
+      <input class="input" placeholder="例如：奖学金,评优,申请" value="{{formKeywords}}" bindinput="onFormKeywordsInput" />
+    </view>
+
+    <view class="btn_row">
+      <button class="ghost" disabled="{{saving}}" bindtap="onResetForm">清空</button>
+      <button class="primary" type="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="onSave">保存</button>
+    </view>
+
+    <view class="list_title">已有问答</view>
+    <view class="list">
+      <view class="item" wx:for="{{items}}" wx:key="_id">
+        <view class="item_q">{{item.question}}</view>
+        <view class="item_k" wx:if="{{item.keywords && item.keywords.length}}">关键词：{{item.keywords.join('、')}}</view>
+        <view class="item_a">{{item.answer}}</view>
+        <view class="item_actions">
+          <button size="mini" class="ghost" data-id="{{item._id}}" bindtap="onEdit">编辑</button>
+          <button size="mini" class="danger" data-id="{{item._id}}" bindtap="onDelete">删除</button>
+        </view>
+      </view>
+    </view>
+
+    <view class="empty" wx:if="{{!items.length}}">暂无数据</view>
+  </view>
+</view>
+

@@ -1,0 +1,29 @@
+<view class="container">
+  <view class="card">
+    <view class="top_head">{{topHead}}</view>
+    <view class="top_extra" wx:for="{{topExtras}}" wx:key="*this">{{item}}</view>
+  </view>
+
+  <view class="card">
+    <view class="section_title">流程进度</view>
+    <scroll-view class="progress_scroll" scroll-x>
+      <view class="progress">
+        <view class="progress_item" wx:for="{{nodes}}" wx:key="value">
+          <view class="node_wrap" data-index="{{item.index}}" bindtap="onTapNode">
+            <view class="node_circle {{item.state}}"></view>
+            <view class="node_label {{item.state}}">{{item.label}}</view>
+          </view>
+          <view class="node_line {{item.lineState}}" wx:if="{{item.index !== nodes.length - 1}}"></view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view class="card hint_card">
+    <view class="hint">{{hint}}</view>
+    <view class="hint2" wx:if="{{profile}}">
+      当前阶段：{{profile.currentStageLabel || '未设置'}}；思想汇报截止：{{profile.nextReportDue || '未设置'}}；谈话截止：{{profile.nextTalkDue || '未设置'}}
+    </view>
+  </view>
+</view>
+

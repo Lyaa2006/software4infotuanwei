@@ -1,0 +1,112 @@
+<view class="container">
+  <view class="card">
+    <view class="title">学号：{{accountId}}</view>
+
+    <view class="form_row">
+      <view class="label">姓名</view>
+      <input class="input" placeholder="请输入姓名" value="{{profile.name}}" bindinput="onNameInput" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">入党申请书提交日期</view>
+      <view class="row">
+        <picker mode="date" value="{{profile.applicationDate || today}}" bindchange="onDatePick" data-field="applicationDate">
+          <view class="picker">{{profile.applicationDate || '未设置'}}</view>
+        </picker>
+        <button size="mini" class="ghost" data-field="applicationDate" bindtap="onClearDate">清空</button>
+      </view>
+    </view>
+
+    <view class="form_row">
+      <view class="label">成为入党积极分子日期</view>
+      <view class="row">
+        <picker mode="date" value="{{profile.activistDate || today}}" bindchange="onDatePick" data-field="activistDate">
+          <view class="picker">{{profile.activistDate || '未设置'}}</view>
+        </picker>
+        <button size="mini" class="ghost" data-field="activistDate" bindtap="onClearDate">清空</button>
+      </view>
+    </view>
+
+    <view class="form_row">
+      <view class="label">成为发展对象日期</view>
+      <view class="row">
+        <picker mode="date" value="{{profile.devObjectDate || today}}" bindchange="onDatePick" data-field="devObjectDate">
+          <view class="picker">{{profile.devObjectDate || '未设置'}}</view>
+        </picker>
+        <button size="mini" class="ghost" data-field="devObjectDate" bindtap="onClearDate">清空</button>
+      </view>
+    </view>
+
+    <view class="form_row">
+      <view class="label">成为预备党员日期</view>
+      <view class="row">
+        <picker mode="date" value="{{profile.probationaryDate || today}}" bindchange="onDatePick" data-field="probationaryDate">
+          <view class="picker">{{profile.probationaryDate || '未设置'}}</view>
+        </picker>
+        <button size="mini" class="ghost" data-field="probationaryDate" bindtap="onClearDate">清空</button>
+      </view>
+    </view>
+
+    <view class="form_row">
+      <view class="label">预备期满一年日期</view>
+      <view class="row">
+        <picker mode="date" value="{{profile.probationaryFullYearDate || today}}" bindchange="onDatePick" data-field="probationaryFullYearDate">
+          <view class="picker">{{profile.probationaryFullYearDate || '未设置'}}</view>
+        </picker>
+        <button size="mini" class="ghost" data-field="probationaryFullYearDate" bindtap="onClearDate">清空</button>
+      </view>
+    </view>
+
+    <view class="form_row">
+      <view class="label">正式入党日期</view>
+      <view class="row">
+        <picker mode="date" value="{{profile.fullMemberDate || today}}" bindchange="onDatePick" data-field="fullMemberDate">
+          <view class="picker">{{profile.fullMemberDate || '未设置'}}</view>
+        </picker>
+        <button size="mini" class="ghost" data-field="fullMemberDate" bindtap="onClearDate">清空</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section_title">当前阶段与提醒</view>
+
+    <view class="form_row">
+      <view class="label">当前阶段（可手动选择）</view>
+      <picker mode="selector" range="{{stages}}" range-key="label" value="{{stagePickerIndex}}" bindchange="onStageChange">
+        <view class="picker">{{(stages[stagePickerIndex] && stages[stagePickerIndex].label) || '未设置'}}</view>
+      </picker>
+    </view>
+
+    <view class="form_row">
+      <view class="label">当前状态文案</view>
+      <input class="input" placeholder="例如：校党校学习中" value="{{profile.currentStatus}}" bindinput="onStatusInput" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">下一次思想汇报截止日期</view>
+      <view class="row">
+        <picker mode="date" value="{{profile.nextReportDue || today}}" bindchange="onNextDuePick" data-field="nextReportDue">
+          <view class="picker">{{profile.nextReportDue || '未设置'}}</view>
+        </picker>
+        <button size="mini" class="ghost" data-field="nextReportDue" bindtap="onClearNextDue">清空</button>
+      </view>
+    </view>
+
+    <view class="form_row">
+      <view class="label">下一次谈话截止日期</view>
+      <view class="row">
+        <picker mode="date" value="{{profile.nextTalkDue || today}}" bindchange="onNextDuePick" data-field="nextTalkDue">
+          <view class="picker">{{profile.nextTalkDue || '未设置'}}</view>
+        </picker>
+        <button size="mini" class="ghost" data-field="nextTalkDue" bindtap="onClearNextDue">清空</button>
+      </view>
+    </view>
+
+    <view class="btn_row">
+      <button class="ghost" disabled="{{saving}}" bindtap="onBackToList">返回</button>
+      <button class="primary" type="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="onSave">保存</button>
+    </view>
+  </view>
+</view>
+

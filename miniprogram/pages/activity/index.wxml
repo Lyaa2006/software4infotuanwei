@@ -1,0 +1,115 @@
+<view class="container">
+  <view class="card">
+    <view class="section_title">我参与的活动（已通过）</view>
+    <view class="list" wx:if="{{myItems.length}}">
+      <view class="item" wx:for="{{myItems}}" wx:key="_id" bindtap="onTapItem" data-item="{{item}}">
+        <view class="item_title">{{item.title}}</view>
+        <view class="item_meta">{{item.activityDateText}}{{item.myRoleText ? (' · ' + item.myRoleText) : ''}}</view>
+        <view class="item_desc">{{item.summary}}</view>
+      </view>
+    </view>
+    <view class="hint" wx:if="{{!myItems.length}}">暂无数据</view>
+  </view>
+
+  <view class="card" wx:if="{{isCadre}}">
+    <view class="section_title">{{editingId ? '编辑活动（重新提交审核）' : '发布活动（需审核）'}}</view>
+
+    <view class="form_row">
+      <view class="label">标题</view>
+      <input class="input" value="{{formTitle}}" placeholder="例如：团日活动/主题班会" bindinput="onFormTitleInput" maxlength="60" />
+    </view>
+    <view class="form_row">
+      <view class="label">日期（YYYY-MM-DD，可选）</view>
+      <input class="input" value="{{formDate}}" placeholder="例如：2026-05-01" bindinput="onFormDateInput" maxlength="10" />
+    </view>
+    <view class="form_row">
+      <view class="label">活动回顾（可选）</view>
+      <textarea class="textarea" value="{{formSummary}}" placeholder="简要描述活动内容与效果" bindinput="onFormSummaryInput" auto-height maxlength="800"></textarea>
+    </view>
+    <view class="form_row">
+      <view class="label">面向标签（可选，导入该标签同学为参与）</view>
+      <input class="input" value="{{formTargetTag}}" placeholder="例如：三连二排 / 团支部A" bindinput="onFormTargetTagInput" maxlength="30" />
+    </view>
+    <view class="form_row">
+      <view class="label">组织者学号（可选，逗号分隔）</view>
+      <input class="input" value="{{formOrganizers}}" placeholder="例如：20230001,20230002" bindinput="onFormOrganizersInput" />
+    </view>
+    <view class="form_row">
+      <view class="label">参与者学号（可选，逗号分隔；留空则使用面向标签导入）</view>
+      <input class="input" value="{{formParticipants}}" placeholder="例如：20230003,20230004" bindinput="onFormParticipantsInput" />
+    </view>
+    <view class="form_row">
+      <view class="label">协助者学号（可选，逗号分隔）</view>
+      <input class="input" value="{{formHelpers}}" placeholder="例如：20230005" bindinput="onFormHelpersInput" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">活动照片（可选，最多6张）</view>
+      <view class="btn_row">
+        <button class="ghost" disabled="{{uploading}}" bindtap="onChoosePhotos">选择照片</button>
+        <button class="ghost" disabled="{{uploading || !formPhotos.length}}" bindtap="onClearPhotos">清除</button>
+      </view>
+      <view class="img_row" wx:if="{{formPhotos.length}}">
+        <image class="img" mode="aspectFill" wx:for="{{formPhotos}}" wx:key="url" src="{{item}}" bindtap="onPreviewPhoto" data-url="{{item}}"></image>
+      </view>
+    </view>
+
+    <view class="btn_row">
+      <button class="ghost" disabled="{{saving}}" bindtap="onResetForm">清空</button>
+      <button class="primary" type="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="onSubmit">提交审核</button>
+    </view>
+
+    <view class="hint" wx:if="{{editingRejectReason}}">上次驳回原因：{{editingRejectReason}}</view>
+  </view>
+
+  <view class="card" wx:if="{{isCadre}}">
+    <view class="section_title">我提交的活动</view>
+    <view class="list" wx:if="{{cadreItems.length}}">
+      <view class="item" wx:for="{{cadreItems}}" wx:key="_id">
+        <view class="item_title">{{item.title}}</view>
+        <view class="item_meta">{{item.activityDateText}} · {{item.statusText}}{{item.participantCount ? (' · 参与 ' + item.participantCount + ' 人') : ''}}</view>
+        <view class="item_desc">{{item.summary}}</view>
+        <view class="btn_row">
+          <button size="mini" class="ghost" data-id="{{item._id}}" bindtap="onEditItem" wx:if="{{item.canEdit}}">编辑</button>
+        </view>
+        <view class="hint" wx:if="{{item.rejectReason}}">驳回原因：{{item.rejectReason}}</view>
+      </view>
+    </view>
+    <view class="hint" wx:if="{{!cadreItems.length}}">暂无数据</view>
+  </view>
+
+  <view class="card" wx:if="{{isAdmin}}">
+    <view class="section_title">待审核活动</view>
+    <view class="list" wx:if="{{pendingItems.length}}">
+      <view class="item" wx:for="{{pendingItems}}" wx:key="_id">
+        <view class="item_title">{{item.title}}</view>
+        <view class="item_meta">{{item.activityDateText}} · 提交人 {{item.createdBy}}</view>
+        <view class="item_desc">{{item.summary}}</view>
+        <view class="img_row" wx:if="{{item.photoUrls.length}}">
+          <image class="img" mode="aspectFill" wx:for="{{item.photoUrls}}" wx:key="url" src="{{item}}" bindtap="onPreviewPhoto" data-url="{{item}}"></image>
+        </view>
+        <view class="btn_row">
+          <button size="mini" class="danger" data-id="{{item._id}}" bindtap="onReject">驳回</button>
+          <button size="mini" class="primary" type="primary" data-id="{{item._id}}" bindtap="onApprove">通过</button>
+        </view>
+      </view>
+    </view>
+    <view class="hint" wx:if="{{!pendingItems.length}}">暂无待审核</view>
+  </view>
+
+  <view class="card" wx:if="{{isAdmin}}">
+    <view class="section_title">骨干权限（标签：班团骨干）</view>
+    <view class="list" wx:if="{{students.length}}">
+      <view class="student_item" wx:for="{{students}}" wx:key="accountId">
+        <view class="student_left">
+          <view class="student_id">{{item.accountId}}{{item.name ? ('（' + item.name + '）') : ''}}</view>
+          <view class="student_tags">{{item.tagsText}}</view>
+        </view>
+        <button size="mini" class="ghost" data-account-id="{{item.accountId}}" bindtap="onToggleCadre">
+          {{item.isCadre ? '取消骨干' : '设为骨干'}}
+        </button>
+      </view>
+    </view>
+    <view class="hint" wx:if="{{!students.length}}">暂无学生数据</view>
+  </view>
+</view>

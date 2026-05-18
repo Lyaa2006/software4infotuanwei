@@ -1,0 +1,26 @@
+# Auto-detect text files and normalize line endings in the repository
+* text=auto
+
+# Force LF for common source files and lockfiles so repos stay consistent across platforms
+*.js     text eol=lf
+*.jsx    text eol=lf
+*.ts     text eol=lf
+*.tsx    text eol=lf
+*.json   text eol=lf
+*.css    text eol=lf
+*.html   text eol=lf
+*.md     text eol=lf
+*.sh     text eol=lf
+package-lock.json text eol=lf
+
+# Treat images and other binary formats as binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.pdf binary
+*.woff binary
+*.ttf binary
+*.exe binary

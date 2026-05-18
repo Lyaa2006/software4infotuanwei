@@ -1,0 +1,74 @@
+page {
+  padding: 32rpx;
+  background-color: #f6f6f6;
+}
+
+.container {
+  font-family: PingFang SC;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 24rpx;
+}
+
+.header_row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 12rpx;
+}
+
+.section_title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+}
+
+.ghost {
+  margin: 0;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.item {
+  background: #f9f9f9;
+  border-radius: 12rpx;
+  padding: 18rpx;
+}
+
+.item_top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.item_title {
+  font-size: 30rpx;
+  color: rgba(0, 0, 0, 0.9);
+  flex: 1;
+}
+
+.item_meta {
+  font-size: 24rpx;
+  color: rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+}
+
+.empty {
+  text-align: center;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 28rpx;
+  padding: 20rpx 0 8rpx;
+}

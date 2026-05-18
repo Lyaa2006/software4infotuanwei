@@ -1,0 +1,101 @@
+<view class="container">
+  <view class="card">
+    <view class="section_title">{{isAdmin ? '学院通知（学生端展示）' : '学院通知'}}</view>
+
+    <view class="list" wx:if="{{items.length}}">
+      <view class="item" wx:for="{{items}}" wx:key="_id" data-id="{{item._id}}" bindtap="onTapItem">
+        <view class="item_top">
+          <view class="item_title">{{item.title}}</view>
+          <view class="badge" wx:if="{{!item.readAt}}">未读</view>
+        </view>
+        <view class="item_time">{{item.createdAtText}}</view>
+        <view class="item_preview">{{item.preview}}</view>
+      </view>
+    </view>
+
+    <view class="empty" wx:if="{{!items.length}}">暂无通知</view>
+  </view>
+
+  <view class="card" wx:if="{{isAdmin}}">
+    <view class="section_title">发布通知</view>
+
+    <view class="form_row">
+      <view class="label">标题</view>
+      <input class="input" placeholder="请输入标题" value="{{formTitle}}" bindinput="onFormTitleInput" maxlength="60" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">内容</view>
+      <textarea class="textarea" placeholder="请输入通知内容" value="{{formContent}}" bindinput="onFormContentInput" auto-height maxlength="2000"></textarea>
+    </view>
+
+    <view class="form_row">
+      <view class="label">发送范围</view>
+      <radio-group class="radio_group" bindchange="onFormTargetTypeChange">
+        <label class="radio_item">
+          <radio value="all" checked="{{formTargetType === 'all'}}" />全部学生
+        </label>
+        <label class="radio_item">
+          <radio value="tags" checked="{{formTargetType === 'tags'}}" />按标签
+        </label>
+      </radio-group>
+    </view>
+
+    <view class="form_row" wx:if="{{formTargetType === 'tags'}}">
+      <view class="label">标签（用逗号分隔）</view>
+      <input class="input" placeholder="例如：大一,贫困生,奖学金" value="{{formTagsText}}" bindinput="onFormTagsInput" />
+      <view class="hint" wx:if="{{availableTagsText}}">已有标签：{{availableTagsText}}</view>
+    </view>
+
+    <view class="btn_row">
+      <button class="ghost" disabled="{{sending}}" bindtap="onFormReset">清空</button>
+      <button class="primary" type="primary" loading="{{sending}}" disabled="{{sending}}" bindtap="onSend">发送</button>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{isAdmin}}">
+    <view class="section_title">已发送通知</view>
+
+    <view class="list" wx:if="{{adminMessages.length}}">
+      <view class="item admin_item" wx:for="{{adminMessages}}" wx:key="_id">
+        <view class="item_top">
+          <view class="item_title">{{item.title}}</view>
+          <view class="admin_meta">{{item.targetTypeText}}</view>
+        </view>
+        <view class="item_time">{{item.createdAtText}}</view>
+        <view class="admin_stat">触达 {{item.targetCount}} 人 · 已读 {{item.readCount}} 人</view>
+        <view class="item_preview">{{item.preview}}</view>
+      </view>
+    </view>
+    <view class="empty" wx:if="{{!adminMessages.length}}">暂无数据</view>
+  </view>
+
+  <view class="card" wx:if="{{isAdmin}}">
+    <view class="section_title">学生标签</view>
+
+    <view class="editing" wx:if="{{editingAccountId}}">
+      <view class="label">正在编辑：{{editingNameText}}</view>
+      <input class="input" placeholder="用逗号分隔标签" value="{{editingTagsText}}" bindinput="onEditingTagsInput" />
+      <view class="btn_row">
+        <button class="ghost" disabled="{{savingTags}}" bindtap="onCancelEditTags">取消</button>
+        <button class="primary" type="primary" loading="{{savingTags}}" disabled="{{savingTags}}" bindtap="onSaveEditTags">
+          保存
+        </button>
+      </view>
+    </view>
+
+    <view class="list" wx:if="{{adminStudents.length}}">
+      <view class="student_item" wx:for="{{adminStudents}}" wx:key="accountId">
+        <view class="student_left">
+          <view class="student_id">{{item.accountId}}</view>
+          <view class="student_name" wx:if="{{item.name}}">{{item.name}}</view>
+          <view class="student_tags">{{item.tagsText}}</view>
+        </view>
+        <button size="mini" class="ghost" data-account-id="{{item.accountId}}" data-name="{{item.name}}" data-tags-text="{{item.tagsTextRaw}}" bindtap="onEditTags">
+          编辑
+        </button>
+      </view>
+    </view>
+    <view class="empty" wx:if="{{!adminStudents.length}}">暂无学生数据</view>
+  </view>
+</view>

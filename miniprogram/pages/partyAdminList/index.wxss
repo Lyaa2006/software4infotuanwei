@@ -1,0 +1,71 @@
+page {
+  padding: 32rpx;
+  background-color: #f6f6f6;
+}
+
+.container {
+  font-family: PingFang SC;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18rpx;
+}
+
+.title {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #000;
+}
+
+.ghost {
+  margin: 0;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.item {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 22rpx 24rpx;
+}
+
+.row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 8rpx;
+}
+
+.name {
+  font-size: 32rpx;
+  color: rgba(0, 0, 0, 0.9);
+  font-weight: 600;
+}
+
+.stage {
+  font-size: 26rpx;
+  color: rgba(37, 99, 235, 0.9);
+}
+
+.row2 {
+  font-size: 26rpx;
+  color: rgba(0, 0, 0, 0.65);
+  line-height: 40rpx;
+}
+
+.empty {
+  text-align: center;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 28rpx;
+  padding: 40rpx 0 8rpx;
+}
+

@@ -1,0 +1,17 @@
+<view class="container">
+  <view class="card">
+    <view class="header_row">
+      <view class="section_title">公开荣誉主页</view>
+      <button size="mini" class="ghost" wx:if="{{isStudent}}" bindtap="onGoMyProfile">我的主页</button>
+    </view>
+    <view class="list" wx:if="{{users.length}}">
+      <view class="item" wx:for="{{users}}" wx:key="accountId" data-account-id="{{item.accountId}}" bindtap="onTapUser">
+        <view class="item_top">
+          <view class="item_title">{{item.nameText}}</view>
+          <view class="item_meta">{{item.publicCount}} 条</view>
+        </view>
+      </view>
+    </view>
+    <view class="empty" wx:if="{{!users.length}}">暂无公开荣誉</view>
+  </view>
+</view>

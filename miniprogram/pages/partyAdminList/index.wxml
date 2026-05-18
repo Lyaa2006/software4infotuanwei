@@ -1,0 +1,19 @@
+<view class="container">
+  <view class="header">
+    <view class="title">学生列表</view>
+    <button class="ghost" size="mini" bindtap="onAddStudent">新增/编辑</button>
+  </view>
+
+  <view class="list">
+    <view class="item" wx:for="{{items}}" wx:key="accountId" data-account-id="{{item.accountId}}" bindtap="onTapStudent">
+      <view class="row1">
+        <view class="name">{{item.name || item.accountId}}</view>
+        <view class="stage">{{item.currentStageLabel || '未设置'}}</view>
+      </view>
+      <view class="row2">思想汇报：{{item.nextReportDue || '未设置'}} ｜ 谈话：{{item.nextTalkDue || '未设置'}}</view>
+    </view>
+  </view>
+
+  <view class="empty" wx:if="{{!items.length}}">暂无学生数据，可点击右上角新增</view>
+</view>
+

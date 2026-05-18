@@ -1,0 +1,16 @@
+{
+  "name": "miniprogram-backend",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "busboy": "^1.6.0",
+    "pg": "^8.12.0",
+    "puppeteer": "^24.10.2"
+  }
+}

@@ -1,0 +1,26 @@
+<view class="container">
+  <view class="title">登录</view>
+  <view class="top_tip">首次使用自动注册；学工号需在系统权限清单内</view>
+
+  <view class="card">
+    <view class="field_title">身份</view>
+    <radio-group class="radio_group" bindchange="onRoleChange">
+      <label class="radio_item">
+        <radio value="student" checked="{{role === 'student'}}" />学生
+      </label>
+      <label class="radio_item">
+        <radio value="admin" checked="{{role === 'admin'}}" />管理员
+      </label>
+    </radio-group>
+
+    <view class="field_title">学工号</view>
+    <input class="input" placeholder="请输入学工号" value="{{accountId}}" bindinput="onAccountInput" />
+
+    <view class="field_title">密码</view>
+    <input class="input" placeholder="请输入密码" password value="{{password}}" bindinput="onPasswordInput" />
+
+    <button class="submit" type="primary" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onSubmit">
+      登录 / 注册
+    </button>
+  </view>
+</view>

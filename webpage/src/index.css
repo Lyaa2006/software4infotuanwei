@@ -1,0 +1,14 @@
+:root {
+  --bg: #f7f8fa;
+  --card: #ffffff;
+  --muted: #6b7280;
+  --accent: #2563eb;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: Inter, Arial, sans-serif; background: var(--bg); color: #111827; }
+.container { max-width: 980px; margin: 32px auto; padding: 20px; }
+.card { background: var(--card); border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(16,24,40,0.04); }
+.form-row { margin-bottom: 12px; }
+.input { width: 100%; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 6px; }
+.btn { background: var(--accent); color: #fff; border: none; padding: 10px 14px; border-radius: 6px; cursor: pointer; }
+.link { color: var(--accent); cursor: pointer; }

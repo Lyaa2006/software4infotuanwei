@@ -1,0 +1,26 @@
+<view class="container">
+  <view class="header">
+    <view class="title">功能首页</view>
+    <button class="logout" size="mini" bindtap="onLogout">退出登录</button>
+  </view>
+
+  <view class="user_card" wx:if="{{user}}">
+    <view class="user_line">身份：{{user.role === 'admin' ? '管理员' : '学生'}}</view>
+    <view class="user_line">学工号：{{user.accountId}}</view>
+  </view>
+
+  <view class="list">
+    <view
+      class="item"
+      wx:for="{{features}}"
+      wx:key="key"
+      data-key="{{item.key}}"
+      data-title="{{item.title}}"
+      bindtap="onTapFeature"
+    >
+      <view class="item_title">{{item.title}}</view>
+      <view class="item_tip">接口已预留</view>
+    </view>
+  </view>
+</view>
+

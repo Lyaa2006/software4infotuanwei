@@ -1,0 +1,77 @@
+<view class="container">
+  <view class="card">
+    <view class="section_title">{{userTitle}}</view>
+    <view class="hint">{{isEditable ? '提示：最多 10 条；可设置是否公开' : '仅展示公开荣誉'}}</view>
+  </view>
+
+  <view class="card" wx:if="{{isEditable}}">
+    <view class="section_title">{{editingId ? '编辑荣誉' : '新增荣誉'}}</view>
+
+    <view class="form_row">
+      <view class="label">荣誉名称</view>
+      <input class="input" placeholder="例如：校级优秀学生干部" value="{{formTitle}}" bindinput="onFormTitleInput" maxlength="60" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">颁发单位（可选）</view>
+      <input class="input" placeholder="例如：信息工程学院" value="{{formIssuer}}" bindinput="onFormIssuerInput" maxlength="60" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">获奖日期（可选，YYYY-MM-DD）</view>
+      <input class="input" placeholder="例如：2026-05-01" value="{{formHonorDate}}" bindinput="onFormHonorDateInput" maxlength="10" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">描述（可选）</view>
+      <textarea class="textarea" placeholder="可填写奖项说明、比赛名称等" value="{{formDescription}}" bindinput="onFormDescriptionInput" auto-height maxlength="300"></textarea>
+    </view>
+
+    <view class="form_row">
+      <view class="label">是否公开</view>
+      <radio-group bindchange="onFormPublicChange">
+        <label class="radio_item">
+          <radio value="true" checked="{{formIsPublic}}" />公开
+        </label>
+        <label class="radio_item">
+          <radio value="false" checked="{{!formIsPublic}}" />仅自己可见
+        </label>
+      </radio-group>
+    </view>
+
+    <view class="form_row">
+      <view class="label">荣誉照片（可选）</view>
+      <view class="btn_row">
+        <button class="ghost" disabled="{{uploading}}" bindtap="onChooseImage">选择图片</button>
+        <button class="ghost" disabled="{{uploading || !formImagePath}}" bindtap="onClearImage">清除</button>
+      </view>
+      <image class="img" mode="widthFix" src="{{imageUrl}}" wx:if="{{imageUrl}}"></image>
+      <view class="hint" wx:if="{{formImagePath}}">已选择图片</view>
+    </view>
+
+    <view class="btn_row">
+      <button class="ghost" disabled="{{saving}}" bindtap="onResetForm">清空</button>
+      <button class="primary" type="primary" loading="{{saving}}" disabled="{{saving}}" bindtap="onSave">保存</button>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section_title">荣誉列表</view>
+    <view class="list" wx:if="{{items.length}}">
+      <view class="item" wx:for="{{items}}" wx:key="_id">
+        <view class="item_title">{{item.title}}</view>
+        <view class="item_meta">
+          {{item.honorDateText}}{{item.issuer ? (' · ' + item.issuer) : ''}}
+        </view>
+        <view class="item_desc" wx:if="{{item.description}}">{{item.description}}</view>
+        <image class="img" mode="widthFix" src="{{item.imageUrl}}" wx:if="{{item.imageUrl}}" bindtap="onPreviewImage" data-url="{{item.imageUrl}}"></image>
+        <view class="badge" wx:if="{{isEditable}}">{{item.isPublic ? '公开' : '仅自己可见'}}</view>
+        <view class="item_actions" wx:if="{{isEditable}}">
+          <button size="mini" class="ghost" data-id="{{item._id}}" bindtap="onEdit">编辑</button>
+          <button size="mini" class="danger" data-id="{{item._id}}" bindtap="onDelete">删除</button>
+        </view>
+      </view>
+    </view>
+    <view class="empty" wx:if="{{!items.length}}">暂无数据</view>
+  </view>
+</view>
