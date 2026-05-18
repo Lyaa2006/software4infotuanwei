@@ -30,6 +30,8 @@ function request({ method, path, data, auth }) {
         if (!payload?.success) {
           const err = new Error(payload?.message || "请求失败");
           err.code = payload?.code || "REQUEST_FAILED";
+          err.status = Number(res?.statusCode || 0) || 0;
+          err.debug = payload?.debug;
           reject(err);
           return;
         }
@@ -461,19 +463,23 @@ const featureApi = {
   },
   async activityAdminApprove({ id }) {
     const normalizedId = String(id ?? "").trim();
+    const session = getSession();
+    const reviewedBy = normalizeAccountId(session?.accountId);
     return await request({
       method: "POST",
       path: `/api/activity/admin/${encodeURIComponent(normalizedId)}/approve`,
-      data: {},
+      data: reviewedBy ? { reviewed_by: reviewedBy } : {},
       auth: true,
     });
   },
-  async activityAdminReject({ id, reason }) {
+  async activityAdminReject({ id, reason, reviewed_by }) {
     const normalizedId = String(id ?? "").trim();
+    const session = getSession();
+    const reviewedBy = normalizeAccountId(reviewed_by) || normalizeAccountId(session?.accountId);
     return await request({
       method: "POST",
       path: `/api/activity/admin/${encodeURIComponent(normalizedId)}/reject`,
-      data: { reason: String(reason ?? "") },
+      data: reviewedBy ? { reason: String(reason ?? ""), reviewed_by: reviewedBy } : { reason: String(reason ?? "") },
       auth: true,
     });
   },
@@ -488,4 +494,3 @@ module.exports = {
   },
   featureApi,
 };
-

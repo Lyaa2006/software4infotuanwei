@@ -31,6 +31,30 @@ function fail(res, code, message, status = 400) {
   res.status(status).json({ success: false, code, message });
 }
 
+function failExtra(res, code, message, status = 400, extra) {
+  const safeExtra = extra && typeof extra === "object" ? extra : {};
+  res.status(status).json({ success: false, code, message, ...safeExtra });
+}
+
+function buildPgDebug(err) {
+  const out = {};
+  const code = String(err?.code || "").trim();
+  if (code) out.code = code;
+  const column = String(err?.column || "").trim();
+  if (column) out.column = column;
+  const constraint = String(err?.constraint || "").trim();
+  if (constraint) out.constraint = constraint;
+  const detail = String(err?.detail || "").trim();
+  if (detail) out.detail = detail;
+  const table = String(err?.table || "").trim();
+  if (table) out.table = table;
+  const schema = String(err?.schema || "").trim();
+  if (schema) out.schema = schema;
+  const routine = String(err?.routine || "").trim();
+  if (routine) out.routine = routine;
+  return out;
+}
+
 async function ensureSchema(pool) {
   const schemaPath = path.join(__dirname, "schema.sql");
   if (!fs.existsSync(schemaPath)) return;
@@ -95,6 +119,29 @@ async function ensureActivitySchema(pool) {
     activity_id BIGINT PRIMARY KEY,
     reason VARCHAR(256) NOT NULL DEFAULT ''
   )`);
+
+  try {
+    const resp = await pool.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='class_activity_reviews'",
+    );
+    const cols = new Set((resp.rows || []).map((r) => String(r.column_name || "")));
+    if (cols.has("review_by") && !cols.has("reviewed_by")) {
+      await pool.query("ALTER TABLE class_activity_reviews RENAME COLUMN review_by TO reviewed_by");
+    }
+    if (cols.has("review_at") && !cols.has("reviewed_at")) {
+      await pool.query("ALTER TABLE class_activity_reviews RENAME COLUMN review_at TO reviewed_at");
+    }
+  } catch {}
+
+  try {
+    const resp = await pool.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='class_activity_rejections'",
+    );
+    const cols = new Set((resp.rows || []).map((r) => String(r.column_name || "")));
+    if (cols.has("reject_reason") && !cols.has("reason")) {
+      await pool.query("ALTER TABLE class_activity_rejections RENAME COLUMN reject_reason TO reason");
+    }
+  } catch {}
 
   const resp = await pool.query(
     "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='class_activities'",
@@ -268,6 +315,15 @@ function mapHonorDbError(err) {
 
 function mapActivityDbError(err) {
   const code = String(err?.code || "");
+  if (code === "28P01") {
+    return { code: "DB_AUTH_FAILED", message: "数据库认证失败：请检查 DB_USER / DB_PASSWORD", status: 500 };
+  }
+  if (code === "42501") {
+    return { code: "PERMISSION_DENIED", message: "数据库权限不足：请为当前数据库账号授权", status: 500 };
+  }
+  if (code === "ECONNREFUSED" || code === "ETIMEDOUT" || code === "EHOSTUNREACH" || code === "ENOTFOUND") {
+    return { code: "DB_ERROR", message: "数据库连接失败：请检查数据库是否启动、端口是否正确、是否允许本机连接", status: 500 };
+  }
   if (code === "42P01") {
     return {
       code: "SCHEMA_MISSING",
@@ -2055,7 +2111,8 @@ async function main() {
         const stamp = Date.now();
         const rand = crypto.randomBytes(6).toString("hex");
         const stored = `${accountId}_${stamp}_${rand}${finalExt}`;
-        const rel = `uploads/honor/${stored}`.replace(/\\/g, "/");
+  // return a path that starts with a leading slash so frontend can use it as an absolute URL
+  const rel = (`/uploads/honor/${stored}`).replace(/\\/g, "/");
         const full = resolveStoragePath(rel);
         if (!full) {
           file.resume();
@@ -2843,14 +2900,20 @@ async function main() {
   });
 
   app.post("/api/activity/admin/:id/approve", authRequired, adminRequired, async (req, res) => {
+    const debugOn = process.env.NODE_ENV !== "production";
+    let step = "init";
     try {
       const id = Number(req.params.id);
       if (!id) return fail(res, "EMPTY_ID", "缺少ID");
       const now = Date.now();
-      const by = normalizeAccountId(req.user?.accountId);
+      const tokenBy = normalizeAccountId(req.user?.accountId);
+      const bodyBy = normalizeAccountId(req.body?.reviewed_by ?? req.body?.reviewedBy);
+      const by = tokenBy || bodyBy || "unknown";
       const client = await pool.connect();
       try {
+        step = "begin";
         await client.query("BEGIN");
+        step = "update_activity";
         const upd = await client.query(
           "UPDATE class_activities SET status='approved', updated_at=$2 WHERE id=$1 AND status='pending'",
           [id, now],
@@ -2859,13 +2922,36 @@ async function main() {
           await client.query("ROLLBACK");
           return fail(res, "NOT_FOUND", "活动不存在或已处理", 404);
         }
+        step = "update_activity_review_cols";
+        const reviewedByCol = await client.query(
+          "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='class_activities' AND column_name='reviewed_by' LIMIT 1",
+        );
+        const reviewedAtCol = await client.query(
+          "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='class_activities' AND column_name='reviewed_at' LIMIT 1",
+        );
+        if (reviewedByCol.rowCount || reviewedAtCol.rowCount) {
+          const sets = [];
+          const params = [id];
+          if (reviewedByCol.rowCount) {
+            params.push(by);
+            sets.push(`reviewed_by=$${params.length}`);
+          }
+          if (reviewedAtCol.rowCount) {
+            params.push(now);
+            sets.push(`reviewed_at=$${params.length}`);
+          }
+          await client.query(`UPDATE class_activities SET ${sets.join(", ")} WHERE id=$1`, params);
+        }
+        step = "upsert_review";
         await client.query(
           `INSERT INTO class_activity_reviews (activity_id, reviewed_by, reviewed_at)
-           VALUES ($1,$2,$3)
+           VALUES ($1, $2, $3)
            ON CONFLICT (activity_id) DO UPDATE SET reviewed_by=EXCLUDED.reviewed_by, reviewed_at=EXCLUDED.reviewed_at`,
           [id, by, now],
         );
+        step = "delete_rejection";
         await client.query("DELETE FROM class_activity_rejections WHERE activity_id=$1", [id]);
+        step = "commit";
         await client.query("COMMIT");
       } catch (e) {
         try {
@@ -2878,21 +2964,41 @@ async function main() {
       ok(res, { ok: true });
     } catch (e) {
       const mapped = mapActivityDbError(e);
-      if (mapped) return fail(res, mapped.code, mapped.message, mapped.status);
-      fail(res, "SERVER_ERROR", "服务器异常", 500);
+      const debug = {
+        route: "/api/activity/admin/:id/approve",
+        method: "POST",
+        step,
+        id: String(req.params?.id ?? ""),
+        user: { role: String(req.user?.role ?? ""), accountId: String(req.user?.accountId ?? "") },
+        pg: buildPgDebug(e),
+      };
+      if (mapped) {
+        console.error({ ...debug, mapped });
+        return debugOn
+          ? failExtra(res, mapped.code, mapped.message, mapped.status, { debug })
+          : fail(res, mapped.code, mapped.message, mapped.status);
+      }
+      console.error({ ...debug, error: String(e?.message || e) });
+      return debugOn ? failExtra(res, "SERVER_ERROR", "服务器异常", 500, { debug }) : fail(res, "SERVER_ERROR", "服务器异常", 500);
     }
   });
 
   app.post("/api/activity/admin/:id/reject", authRequired, adminRequired, async (req, res) => {
+    const debugOn = process.env.NODE_ENV !== "production";
+    let step = "init";
     try {
       const id = Number(req.params.id);
       if (!id) return fail(res, "EMPTY_ID", "缺少ID");
       const reason = String(req.body?.reason ?? "").trim();
       const now = Date.now();
-      const by = normalizeAccountId(req.user?.accountId);
+      const tokenBy = normalizeAccountId(req.user?.accountId);
+      const bodyBy = normalizeAccountId(req.body?.reviewed_by ?? req.body?.reviewedBy);
+      const by = tokenBy || bodyBy || "unknown";
       const client = await pool.connect();
       try {
+        step = "begin";
         await client.query("BEGIN");
+        step = "update_activity";
         const upd = await client.query(
           "UPDATE class_activities SET status='rejected', updated_at=$2 WHERE id=$1 AND status='pending'",
           [id, now],
@@ -2901,18 +3007,64 @@ async function main() {
           await client.query("ROLLBACK");
           return fail(res, "NOT_FOUND", "活动不存在或已处理", 404);
         }
+        step = "update_activity_review_cols";
+        const reviewedByCol = await client.query(
+          "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='class_activities' AND column_name='reviewed_by' LIMIT 1",
+        );
+        const reviewedAtCol = await client.query(
+          "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='class_activities' AND column_name='reviewed_at' LIMIT 1",
+        );
+        if (reviewedByCol.rowCount || reviewedAtCol.rowCount) {
+          const sets = [];
+          const params = [id];
+          if (reviewedByCol.rowCount) {
+            params.push(by);
+            sets.push(`reviewed_by=$${params.length}`);
+          }
+          if (reviewedAtCol.rowCount) {
+            params.push(now);
+            sets.push(`reviewed_at=$${params.length}`);
+          }
+          await client.query(`UPDATE class_activities SET ${sets.join(", ")} WHERE id=$1`, params);
+        }
+        step = "upsert_review";
         await client.query(
           `INSERT INTO class_activity_reviews (activity_id, reviewed_by, reviewed_at)
-           VALUES ($1,$2,$3)
+           VALUES ($1, $2, $3)
            ON CONFLICT (activity_id) DO UPDATE SET reviewed_by=EXCLUDED.reviewed_by, reviewed_at=EXCLUDED.reviewed_at`,
           [id, by, now],
         );
-        await client.query(
-          `INSERT INTO class_activity_rejections (activity_id, reason)
-           VALUES ($1,$2)
-           ON CONFLICT (activity_id) DO UPDATE SET reason=EXCLUDED.reason`,
-          [id, reason],
+        step = "upsert_rejection";
+        const rejColsResp = await client.query(
+          "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='class_activity_rejections'",
         );
+        const rejCols = new Set((rejColsResp.rows || []).map((r) => String(r.column_name || "")));
+        const colNames = ["activity_id"];
+        const values = [id];
+        if (rejCols.has("reason")) {
+          colNames.push("reason");
+          values.push(reason);
+        }
+        const byCol = rejCols.has("reviewed_by") ? "reviewed_by" : rejCols.has("rejected_by") ? "rejected_by" : "";
+        if (byCol) {
+          colNames.push(byCol);
+          values.push(by);
+        }
+        const atCol = rejCols.has("reviewed_at") ? "reviewed_at" : rejCols.has("rejected_at") ? "rejected_at" : "";
+        if (atCol) {
+          colNames.push(atCol);
+          values.push(now);
+        }
+        const placeholders = colNames.map((_, idx) => `$${idx + 1}`);
+        const updateCols = colNames.filter((c) => c !== "activity_id");
+        const updateSql = updateCols.length ? ` DO UPDATE SET ${updateCols.map((c) => `${c}=EXCLUDED.${c}`).join(", ")}` : " DO NOTHING";
+        await client.query(
+          `INSERT INTO class_activity_rejections (${colNames.join(", ")})
+           VALUES (${placeholders.join(", ")})
+           ON CONFLICT (activity_id)${updateSql}`,
+          values,
+        );
+        step = "commit";
         await client.query("COMMIT");
       } catch (e) {
         try {
@@ -2925,8 +3077,23 @@ async function main() {
       ok(res, { ok: true });
     } catch (e) {
       const mapped = mapActivityDbError(e);
-      if (mapped) return fail(res, mapped.code, mapped.message, mapped.status);
-      fail(res, "SERVER_ERROR", "服务器异常", 500);
+      const debug = {
+        route: "/api/activity/admin/:id/reject",
+        method: "POST",
+        step,
+        id: String(req.params?.id ?? ""),
+        bodyKeys: Object.keys(req.body || {}),
+        user: { role: String(req.user?.role ?? ""), accountId: String(req.user?.accountId ?? "") },
+        pg: buildPgDebug(e),
+      };
+      if (mapped) {
+        console.error({ ...debug, mapped });
+        return debugOn
+          ? failExtra(res, mapped.code, mapped.message, mapped.status, { debug })
+          : fail(res, mapped.code, mapped.message, mapped.status);
+      }
+      console.error({ ...debug, error: String(e?.message || e) });
+      return debugOn ? failExtra(res, "SERVER_ERROR", "服务器异常", 500, { debug }) : fail(res, "SERVER_ERROR", "服务器异常", 500);
     }
   });
 

@@ -45,6 +45,8 @@ async function request({ method = 'GET', path = '/', data = null, auth = true })
     if (!obj?.success) {
       const err = new Error(obj?.message || '请求失败')
       err.code = obj?.code || 'REQUEST_FAILED'
+      err.status = res.status
+      err.debug = obj?.debug
       throw err
     }
     return obj.data
@@ -140,8 +142,8 @@ const featureApi = {
   async activityCadreCreate({ title, summary, activityDate, targetTag, photoPaths, participants }) { return await request({ method: 'POST', path: '/api/activity/cadre', data: { title: String(title ?? ''), summary: String(summary ?? ''), activityDate: String(activityDate ?? ''), targetTag: String(targetTag ?? ''), photoPaths: Array.isArray(photoPaths) ? photoPaths : [], participants: participants || {} }, auth: true }) },
   async activityCadreUpdate({ id, title, summary, activityDate, targetTag, photoPaths, participants }) { const i = String(id ?? '').trim(); return await request({ method: 'PUT', path: `/api/activity/cadre/${encodeURIComponent(i)}`, data: { title: String(title ?? ''), summary: String(summary ?? ''), activityDate: String(activityDate ?? ''), targetTag: String(targetTag ?? ''), photoPaths: Array.isArray(photoPaths) ? photoPaths : [], participants: participants || {} }, auth: true }) },
   async activityAdminPending() { return await request({ method: 'GET', path: '/api/activity/admin/pending', auth: true }) },
-  async activityAdminApprove({ id }) { const i = String(id ?? '').trim(); return await request({ method: 'POST', path: `/api/activity/admin/${encodeURIComponent(i)}/approve`, auth: true }) },
-  async activityAdminReject({ id, reason }) { const i = String(id ?? '').trim(); return await request({ method: 'POST', path: `/api/activity/admin/${encodeURIComponent(i)}/reject`, data: { reason: String(reason ?? '') }, auth: true }) },
+  async activityAdminApprove({ id, reviewed_by }) { const i = String(id ?? '').trim(); const s = getSession(); const by = String(reviewed_by ?? '').trim() || String(s?.accountId ?? '').trim(); return await request({ method: 'POST', path: `/api/activity/admin/${encodeURIComponent(i)}/approve`, data: by ? { reviewed_by: by } : null, auth: true }) },
+  async activityAdminReject({ id, reason, reviewed_by }) { const i = String(id ?? '').trim(); const s = getSession(); const by = String(reviewed_by ?? '').trim() || String(s?.accountId ?? '').trim(); return await request({ method: 'POST', path: `/api/activity/admin/${encodeURIComponent(i)}/reject`, data: by ? { reason: String(reason ?? ''), reviewed_by: by } : { reason: String(reason ?? '') }, auth: true }) },
   async activityCadreUpload(file) { return await uploadFile('/api/activity/cadre/upload', file, 'file') },
 }
 

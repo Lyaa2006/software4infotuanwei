@@ -15,6 +15,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // Also proxy uploads so image URLs like /uploads/.. are forwarded to the backend
+      '/uploads': {
+        target: process.env.VITE_API_BASE || 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
     },
   },
 })

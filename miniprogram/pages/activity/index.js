@@ -406,11 +406,19 @@ Page({
         wx.showLoading({ title: "处理中..." });
         try {
           const api = require("../../services/api");
-          await api.featureApi.activityAdminReject({ id, reason: r.content || "" });
+          const session = api.auth.getSession();
+          const reviewedBy = String(session?.accountId || "").trim();
+          await api.featureApi.activityAdminReject({ id, reason: r.content || "", reviewed_by: reviewedBy });
           wx.showToast({ title: "已驳回", icon: "success" });
           await this.loadPending();
         } catch (e2) {
-          wx.showToast({ title: e2?.message || "操作失败", icon: "none" });
+          const code = String(e2?.code || "");
+          const status = Number(e2?.status || 0) || 0;
+          const debugText = e2?.debug ? JSON.stringify(e2.debug, null, 2) : "";
+          const msg = [e2?.message || "操作失败", code ? `code=${code}` : "", status ? `status=${status}` : "", debugText ? `debug=${debugText}` : ""]
+            .filter(Boolean)
+            .join("\n");
+          wx.showModal({ title: "驳回失败", content: msg.slice(0, 1600), showCancel: false });
         } finally {
           wx.hideLoading();
         }
@@ -440,4 +448,3 @@ Page({
     }
   },
 });
-
