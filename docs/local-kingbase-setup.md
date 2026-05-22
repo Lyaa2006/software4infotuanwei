@@ -143,11 +143,15 @@ DB_NAME=student_service_platform
 - 用户名：`system`
 - 密码：`123456`
 
+![alt text](image.png)
+
 如果工具要求确认权限，至少保证这个用户具备：
 
 - 连接数据库权限
 - 建表权限
 - 增删改查权限
+
+如果已有该用户，就进行下一步
 
 ### 3.4 新建数据库
 
@@ -159,19 +163,35 @@ DB_NAME=student_service_platform
 
 如果新建数据库时不能直接指定所有者，也可以先创建数据库，再把权限授予 `system`。
 
-### 3.5 给 `system` 用户授权
+或者
+打开 SQL 编辑器，执行：
+CREATE DATABASE student_service_platform;
+![alt text](image-1.png)
 
-如果数据库所有者已经是 `system`，通常这一步会简单很多。
+测试连接：
+新建连接，双击
 
-如果不是，至少要确保 `system` 对 `student_service_platform` 有：
+![alt text](image-2.png)
 
-- 连接权限
-- 建表权限
-- 读写权限
+填写：
+
+连接名：student_service_platform
+主机：127.0.0.1
+端口：54321
+数据库：student_service_platform
+用户名：system
+密码：123456
+
+![alt text](image-3.png)
+
+点击测试连接检测成功，如果保存就截图问ai
+
+![alt text](image-4.png)
+
 
 ### 3.6 配置项目的 `server/.env`
 
-把 [server/.env](../server/.env) 设置为：
+把 (../server/.env) 设置为：
 
 ```env
 PORT=3001
@@ -182,12 +202,14 @@ DB_USER=system
 DB_PASSWORD=123456
 DB_NAME=student_service_platform
 ```
+（这一步不用做，所有人都是一样的，git同步过了，可以检查一下）
 
 ### 3.7 启动后端
 
 在项目根目录执行：
 
 ```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 cd server
 npm install
 npm start
