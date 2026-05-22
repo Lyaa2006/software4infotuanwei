@@ -1,8 +1,10 @@
+require('dotenv').config();
 const crypto = require("crypto");
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const { Pool } = require("pg");
+
 
 const PORT = Number(process.env.PORT || 3001);
 const TOKEN_SECRET = String(process.env.TOKEN_SECRET || "dev-secret-change-me");
