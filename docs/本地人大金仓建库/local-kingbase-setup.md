@@ -213,6 +213,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 cd server
 npm install
 npm start
+
 ```
 
 后端启动后会自动尝试连接数据库，并执行 `schema.sql` 建表。
@@ -240,9 +241,3 @@ npm start
 5. 启动后端，让它自动建表
 6. 从已经跑通的同学那里导出并导入初始化数据
 
-这样做的好处是：
-
-- 文档简单
-- 不需要每个人记自己的数据库名
-- 不需要每个人改本地配置
-- 联调时环境差异最小
