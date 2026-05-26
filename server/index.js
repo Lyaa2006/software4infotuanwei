@@ -531,7 +531,7 @@ function normalizeTranscriptPdfText(text) {
   return String(text ?? "")
     .replace(/\r/g, "\n")
     .replace(/\u3000/g, " ")
-    .replace(/[ \t]+/g, " ")
+    .replace(/[ ]+/g, " ")
     .replace(/\n{3,}/g, "\n\n");
 }
 
@@ -542,17 +542,100 @@ function splitTranscriptPdfLines(text) {
     .filter(Boolean);
 }
 
+function splitTranscriptRawLines(text) {
+  return String(text ?? "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => String(line ?? "").replace(/\u3000/g, " ").trim())
+    .filter(Boolean);
+}
+
+function cleanTranscriptColumnText(text) {
+  return String(text ?? "")
+    .replace(/[ ]+/g, " ")
+    .trim();
+}
+
+function isTranscriptPageLine(line) {
+  const value = String(line ?? "").trim();
+  if (!value) return false;
+  return /^第?\s*\d+\s*页(?:\s*\/\s*共?\s*\d+\s*页)?$/i.test(value)
+    || /^--\s*\d+\s*of\s*\d+\s*--$/i.test(value);
+}
+
+function isTranscriptMetaLine(line) {
+  const value = String(line ?? "").trim();
+  if (!value) return true;
+  const compact = value.replace(/\s+/g, "");
+  return /^(学生成绩单|成绩单|Transcript)$/i.test(compact)
+    || /(学号[:：]|姓名[:：]|学院[:：]|院系[:：]|专业[:：]|层次[:：]|学制[:：]|班级[:：]|页号[:：]|制表单位[:：]|打印时间[:：])/i.test(compact)
+    || /(课程名称.*学分.*成绩.*学分绩点)|(学分.*成绩.*学分绩点.*课程名称)/i.test(compact)
+    || isTranscriptSummaryLine(compact)
+    || isTranscriptPageLine(compact);
+}
+
+function splitTranscriptColumnsFromLine(line) {
+  const parts = String(line ?? "").split("\t");
+  if (parts.length <= 1) return [cleanTranscriptColumnText(line)].filter(Boolean);
+
+  const leftPart = cleanTranscriptColumnText(parts[0] ?? "");
+  const rightPart = cleanTranscriptColumnText(parts.slice(1).join(" "));
+  return [leftPart, rightPart].filter(Boolean);
+}
+
+function stripTranscriptSemesterText(text) {
+  return cleanTranscriptColumnText(
+    String(text ?? "").replace(
+      /20\d{2}\s*[-/]\s*20\d{2}.{0,8}?(?:秋季学期|春季学期|夏季学期|冬季学期|第?\s*[12一二]\s*学期|[12一二]学期)/,
+      "",
+    ),
+  );
+}
+
+function buildTranscriptColumnSequence(text) {
+  const rawLines = splitTranscriptRawLines(text);
+  const out = [];
+
+  for (const rawLine of rawLines) {
+    const columns = splitTranscriptColumnsFromLine(rawLine);
+    for (const columnText of columns) {
+      if (!columnText) continue;
+
+      const semester = findTranscriptSemesterInLine(columnText);
+      const cleaned = semester ? stripTranscriptSemesterText(columnText) : columnText;
+
+      if (semester && !cleaned) continue;
+      if (!cleaned) continue;
+      if (isTranscriptMetaLine(cleaned)) continue;
+      out.push(cleaned);
+    }
+  }
+
+  return out;
+}
+
+function getReorderedTranscriptText(text) {
+  return buildTranscriptColumnSequence(text).join("\n");
+}
+
 function normalizeTranscriptSemester(raw) {
   const text = String(raw ?? "").trim();
   if (!text) return "";
-  const match = text.match(/(20\d{2})\s*[-/]\s*(20\d{2}).{0,6}?([12一二])(?:学期)?/);
+  const match = text.match(/(20\d{2})\s*[-/]\s*(20\d{2}).{0,6}?(秋季|春季|夏季|冬季|[12一二])(?:学期)?/);
   if (!match) return text;
-  const term = match[3] === "一" ? "1" : match[3] === "二" ? "2" : match[3];
+  const rawTerm = match[3];
+  const term = rawTerm === "一" ? "1"
+    : rawTerm === "二" ? "2"
+      : rawTerm === "秋季" ? "1"
+        : rawTerm === "春季" ? "2"
+          : rawTerm === "夏季" ? "3"
+            : rawTerm === "冬季" ? "4"
+              : rawTerm;
   return `${match[1]}-${match[2]}-${term}`;
 }
 
 function findTranscriptSemesterInLine(line) {
-  const direct = String(line ?? "").match(/20\d{2}\s*[-/]\s*20\d{2}.{0,8}?(?:第?\s*[12一二]\s*学期|[12一二]学期)/);
+  const direct = String(line ?? "").match(/20\d{2}\s*[-/]\s*20\d{2}.{0,8}?(?:秋季学期|春季学期|夏季学期|冬季学期|第?\s*[12一二]\s*学期|[12一二]学期)/);
   if (direct) return normalizeTranscriptSemester(direct[0]);
   const compact = String(line ?? "").match(/20\d{2}\s*[-/]\s*20\d{2}\s*[-/]\s*[12]/);
   if (compact) return compact[0].replace(/\s+/g, "");
@@ -588,11 +671,14 @@ function parseTranscriptGradeToken(token) {
 }
 
 function shouldSkipTranscriptPdfLine(line) {
-  return /^(序号|学号|姓名|学院|专业|课程类别|成绩单|Transcript|GPA|平均学分绩点)/i.test(String(line ?? ""));
+  return /^(序号|学号|姓名|学院|专业|课程类别|课程名称|成绩单|Transcript|GPA|平均学分绩点)/i.test(String(line ?? ""))
+    || /(课程名称.*学分.*成绩.*学分绩点)|(学分.*成绩.*学分绩点.*课程名称)/i.test(String(line ?? ""))
+    || isTranscriptMetaLine(line);
 }
 
 function isTranscriptSummaryLine(line) {
-  return /(总取得学分|总学分绩点|平均学分绩点|GPA|核算方法|制表单位|日期|页号)/i.test(String(line ?? ""));
+  return /(总取得学分|总学分绩点|平均学分绩点|GPA|核算方法|制表单位|日期|页号|每门课学分绩点|平均学分绩点计算)/i.test(String(line ?? ""))
+    || /(?:^|\s)(?:A\(|A-\(|B\+\(|B\(|B-\(|C\+\(|C\(|C-\(|D\+\(|D\(|P\(|F\()/i.test(String(line ?? ""));
 }
 
 function looksLikeCourseName(text) {
@@ -625,13 +711,13 @@ function buildTranscriptCourse({ code = "", name = "", credits = 0, grade = "" }
 }
 
 function parseTranscriptFromPdfText(text) {
-  const lines = splitTranscriptPdfLines(text);
+  const reorderedText = getReorderedTranscriptText(text);
+  const lines = splitTranscriptPdfLines(reorderedText);
   const out = [];
-  let currentSemester = "";
-  const pendingNames = [];
+  let pendingName = "";
   const gradePattern = "(?:A\\+?|A-|B\\+?|B-|C\\+?|C-|D|F|P|NP|\\d{2,3})";
-  const metricLineRe = new RegExp(`^(\\d+(?:\\.\\d+)?)\\s+(${gradePattern})\\s+(\\d+(?:\\.\\d+)?)(?:\\s+(.+))?$`, "i");
-  const rightInlineRe = new RegExp(`^(.+?)\\s+(\\d+(?:\\.\\d+)?)\\s+(${gradePattern})\\s+(\\d+(?:\\.\\d+)?)$`, "i");
+  const metricLineRe = new RegExp(`^(\\d+(?:\\.\\d+)?)\\s+(${gradePattern})\\s+\\d+(?:\\.\\d+)?$`, "i");
+  const inlineCourseRe = new RegExp(`^(.+?)\\s+(\\d+(?:\\.\\d+)?)\\s+(${gradePattern})\\s+\\d+(?:\\.\\d+)?$`, "i");
 
   function pushCourse(name, credits, grade) {
     const item = buildTranscriptCourse({ name, credits, grade });
@@ -646,30 +732,29 @@ function parseTranscriptFromPdfText(text) {
     if (isTranscriptSummaryLine(rawLine)) continue;
 
     const foundSemester = findTranscriptSemesterInLine(rawLine);
-    let line = rawLine;
-    if (foundSemester) {
-      currentSemester = foundSemester;
-      line = line.replace(foundSemester, "").trim();
-      if (!line) continue;
-    }
+    if (foundSemester) continue;
+
+    const line = rawLine;
 
     if (shouldSkipTranscriptPdfLine(line)) continue;
 
-    const metricMatch = line.match(metricLineRe);
-    if (metricMatch) {
-      const leftName = pendingNames.length ? pendingNames.shift() : "";
-      if (leftName) pushCourse(leftName, metricMatch[1], metricMatch[2]);
-
-      const rest = String(metricMatch[4] || "").trim();
-      if (rest) {
-        const rightMatch = rest.match(rightInlineRe);
-        if (rightMatch) pushCourse(rightMatch[1], rightMatch[2], rightMatch[3]);
-        else if (looksLikeCourseName(rest)) pendingNames.push(rest);
-      }
+    const inlineMatch = line.match(inlineCourseRe);
+    if (inlineMatch) {
+      pushCourse(inlineMatch[1], inlineMatch[2], inlineMatch[3]);
+      pendingName = "";
       continue;
     }
 
-    if (looksLikeCourseName(line)) pendingNames.push(line);
+    const metricMatch = line.match(metricLineRe);
+    if (metricMatch) {
+      if (pendingName) pushCourse(pendingName, metricMatch[1], metricMatch[2]);
+      pendingName = "";
+      continue;
+    }
+
+    if (looksLikeCourseName(line)) {
+      pendingName = pendingName ? `${pendingName} ${line}` : line;
+    }
   }
 
   return dedupeTranscriptCourses(out);
@@ -687,6 +772,7 @@ function buildTranscriptParseSummary({ sourceFormat, courses, debugTextPath, deb
     gradeKinds,
     debugTextPath: String(debugTextPath ?? ""),
     debugJsonPath: String(debugJsonPath ?? ""),
+    debugReorderedTextPath: "",
   };
 }
 
@@ -2482,12 +2568,21 @@ async function main() {
         const parsedJsonRel = `uploads/transcript/${parsedJsonName}`.replace(/\\/g, "/");
         const parsedJsonFull = resolveStoragePath(parsedJsonRel);
         if (!parsedJsonFull) return fail(res, "INVALID_PATH", "文件路径非法", 400);
+        const reorderedTextName = `${accountId}_${stamp}_${rand}_reordered.txt`;
+        const reorderedTextRel = `uploads/transcript/${reorderedTextName}`.replace(/\\/g, "/");
+        const reorderedTextFull = resolveStoragePath(reorderedTextRel);
+        if (!reorderedTextFull) return fail(res, "INVALID_PATH", "文件路径非法", 400);
+        const reorderedText = parsed.format === "pdf" ? getReorderedTranscriptText(fs.readFileSync(path.join(__dirname, "debug-pdf-text.txt"), "utf8")) : "";
+        if (reorderedText) {
+          fs.writeFileSync(reorderedTextFull, reorderedText, "utf8");
+        }
         const parseSummary = buildTranscriptParseSummary({
           sourceFormat: parsed.format,
           courses,
           debugTextPath: "/debug-pdf-text.txt",
           debugJsonPath: `/${parsedJsonRel}`,
         });
+        parseSummary.debugReorderedTextPath = reorderedText ? `/${reorderedTextRel}` : "";
         fs.writeFileSync(
           parsedJsonFull,
           JSON.stringify(
@@ -2498,6 +2593,7 @@ async function main() {
               accountId,
               planName,
               summary: parseSummary,
+              reorderedTextPath: parseSummary.debugReorderedTextPath,
               courses,
             },
             null,
