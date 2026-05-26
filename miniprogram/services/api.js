@@ -1,11 +1,28 @@
 const STORAGE_KEYS = {
   session: "session_v1",
+  apiBaseUrl: "api_base_url_v1",
 };
 
-const BASE_URL = "http://localhost:3001";
+const DEFAULT_BASE_URL = "http://127.0.0.1:3001";
 
 function getBaseUrl() {
-  return BASE_URL;
+  const app = typeof getApp === "function" ? getApp() : null;
+  const globalBaseUrl = String(app?.globalData?.apiBaseUrl || "").trim();
+  if (globalBaseUrl) return globalBaseUrl.replace(/\/+$/, "");
+
+  const storedBaseUrl = String(wx.getStorageSync(STORAGE_KEYS.apiBaseUrl) || "").trim();
+  if (storedBaseUrl) return storedBaseUrl.replace(/\/+$/, "");
+
+  return DEFAULT_BASE_URL;
+}
+
+function setBaseUrl(baseUrl) {
+  const normalized = String(baseUrl || "").trim().replace(/\/+$/, "");
+  if (!normalized) {
+    wx.removeStorageSync(STORAGE_KEYS.apiBaseUrl);
+    return;
+  }
+  wx.setStorageSync(STORAGE_KEYS.apiBaseUrl, normalized);
 }
 
 function normalizeAccountId(accountId) {
@@ -21,7 +38,7 @@ function request({ method, path, data, auth }) {
     }
 
     wx.request({
-      url: `${BASE_URL}${path}`,
+      url: `${getBaseUrl()}${path}`,
       method,
       data,
       header: headers,
@@ -487,6 +504,7 @@ const featureApi = {
 
 module.exports = {
   getBaseUrl,
+  setBaseUrl,
   auth: {
     loginWithAccount,
     getSession,
