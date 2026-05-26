@@ -157,6 +157,8 @@ CREATE TABLE IF NOT EXISTS student_transcripts (
   plan_name VARCHAR(128) NOT NULL DEFAULT '',
   source_format VARCHAR(16) NOT NULL DEFAULT '',
   file_path VARCHAR(512) NOT NULL DEFAULT '',
+  parsed_file_path VARCHAR(512) NOT NULL DEFAULT '',
+  parsed_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
   courses JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at BIGINT NOT NULL
 );

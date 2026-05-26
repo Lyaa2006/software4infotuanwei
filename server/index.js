@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿require('dotenv').config();
 const crypto = require("crypto");
 const express = require("express");
 const fs = require("fs");
@@ -9,12 +9,13 @@ const { Pool } = require("pg");
 const PORT = Number(process.env.PORT || 3001);
 const TOKEN_SECRET = String(process.env.TOKEN_SECRET || "dev-secret-change-me");
 const TOKEN_EXPIRES_MS = Number(process.env.TOKEN_EXPIRES_MS || 7 * 24 * 60 * 60 * 1000);
+const TRANSCRIPT_PATH_PLACEHOLDER = "-";
 
 const DB_HOST = String(process.env.DB_HOST || "127.0.0.1");
 const DB_PORT = Number(process.env.DB_PORT || 54321);
-const DB_USER = String(process.env.DB_USER || "myuser");
-const DB_PASSWORD = String(process.env.DB_PASSWORD || "");
-const DB_NAME = String(process.env.DB_NAME || "mydb");
+const DB_USER = String(process.env.DB_USER || "system");
+const DB_PASSWORD = String(process.env.DB_PASSWORD || "123456");
+const DB_NAME = String(process.env.DB_NAME || "student_service_platform");
 
 const PARTY_STAGES = [
   { value: "group_assessment", label: "通过党课学习小组考核", status: "党课学习小组考核中" },
@@ -203,17 +204,48 @@ async function ensureAcademicSchema(pool) {
     account_id VARCHAR(64) NOT NULL,
     plan_name VARCHAR(128) NOT NULL DEFAULT '',
     source_format VARCHAR(16) NOT NULL DEFAULT '',
-    file_path VARCHAR(512) NOT NULL DEFAULT '',
+    file_path VARCHAR(512) NOT NULL DEFAULT '-',
+    parsed_file_path VARCHAR(512) NOT NULL DEFAULT '-',
+    parsed_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
     courses JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at BIGINT NOT NULL
   )`);
+
+  const transcriptColsResp = await pool.query(
+    "SELECT column_name, column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='student_transcripts'",
+  );
+  const transcriptCols = new Set((transcriptColsResp.rows || []).map((r) => String(r.column_name || "")));
+  const transcriptColDefaults = new Map(
+    (transcriptColsResp.rows || []).map((r) => [String(r.column_name || ""), String(r.column_default || "")]),
+  );
+  if (transcriptCols.has("file_path")) {
+    await pool.query("UPDATE student_transcripts SET file_path=$1 WHERE file_path IS NULL OR file_path=''", [TRANSCRIPT_PATH_PLACEHOLDER]);
+    if (!/^'-'::/.test(transcriptColDefaults.get("file_path") || "")) {
+      await pool.query("ALTER TABLE student_transcripts ALTER COLUMN file_path SET DEFAULT '-'");
+    }
+  }
+  if (!transcriptCols.has("parsed_file_path")) {
+    await pool.query("ALTER TABLE student_transcripts ADD COLUMN parsed_file_path VARCHAR(512) NOT NULL DEFAULT '-'");
+  } else {
+    await pool.query(
+      "UPDATE student_transcripts SET parsed_file_path=$1 WHERE parsed_file_path IS NULL OR parsed_file_path=''",
+      [TRANSCRIPT_PATH_PLACEHOLDER],
+    );
+    if (!/^'-'::/.test(transcriptColDefaults.get("parsed_file_path") || "")) {
+      await pool.query("ALTER TABLE student_transcripts ALTER COLUMN parsed_file_path SET DEFAULT '-'");
+    }
+  }
+  if (!transcriptCols.has("parsed_summary")) {
+    await pool.query("ALTER TABLE student_transcripts ADD COLUMN parsed_summary JSONB NOT NULL DEFAULT '{}'::jsonb");
+  } else {
+    await pool.query("UPDATE student_transcripts SET parsed_summary='{}'::jsonb WHERE parsed_summary IS NULL");
+    await pool.query("ALTER TABLE student_transcripts ALTER COLUMN parsed_summary SET DEFAULT '{}'::jsonb");
+  }
 }
 
 const TEMPLATE_UPLOAD_DIR = path.join(__dirname, "templates", "uploads");
 const HONOR_UPLOAD_DIR = path.join(__dirname, "uploads", "honor");
 const ACTIVITY_UPLOAD_DIR = path.join(__dirname, "uploads", "activity");
-const TRANSCRIPT_UPLOAD_DIR = path.join(__dirname, "uploads", "transcript");
-
 function ensureDirSync(dirPath) {
   if (fs.existsSync(dirPath)) return;
   fs.mkdirSync(dirPath, { recursive: true });
@@ -514,6 +546,252 @@ function parseTranscriptFromCsvText(text) {
   return out;
 }
 
+function normalizeTranscriptPdfText(text) {
+  return String(text ?? "")
+    .replace(/\r/g, "\n")
+    .replace(/\u3000/g, " ")
+    .replace(/[ ]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+function splitTranscriptPdfLines(text) {
+  return normalizeTranscriptPdfText(text)
+    .split("\n")
+    .map((line) => String(line ?? "").trim())
+    .filter(Boolean);
+}
+
+function splitTranscriptRawLines(text) {
+  return String(text ?? "")
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => String(line ?? "").replace(/\u3000/g, " ").trim())
+    .filter(Boolean);
+}
+
+function cleanTranscriptColumnText(text) {
+  return String(text ?? "")
+    .replace(/[ ]+/g, " ")
+    .trim();
+}
+
+function isTranscriptPageLine(line) {
+  const value = String(line ?? "").trim();
+  if (!value) return false;
+  return /^第?\s*\d+\s*页(?:\s*\/\s*共?\s*\d+\s*页)?$/i.test(value)
+    || /^--\s*\d+\s*of\s*\d+\s*--$/i.test(value);
+}
+
+function isTranscriptMetaLine(line) {
+  const value = String(line ?? "").trim();
+  if (!value) return true;
+  const compact = value.replace(/\s+/g, "");
+  return /^(学生成绩单|成绩单|Transcript)$/i.test(compact)
+    || /(学号[:：]|姓名[:：]|学院[:：]|院系[:：]|专业[:：]|层次[:：]|学制[:：]|班级[:：]|页号[:：]|制表单位[:：]|打印时间[:：])/i.test(compact)
+    || /(课程名称.*学分.*成绩.*学分绩点)|(学分.*成绩.*学分绩点.*课程名称)/i.test(compact)
+    || isTranscriptSummaryLine(compact)
+    || isTranscriptPageLine(compact);
+}
+
+function splitTranscriptColumnsFromLine(line) {
+  const parts = String(line ?? "").split("\t");
+  if (parts.length <= 1) return [cleanTranscriptColumnText(line)].filter(Boolean);
+
+  const leftPart = cleanTranscriptColumnText(parts[0] ?? "");
+  const rightPart = cleanTranscriptColumnText(parts.slice(1).join(" "));
+  return [leftPart, rightPart].filter(Boolean);
+}
+
+function stripTranscriptSemesterText(text) {
+  return cleanTranscriptColumnText(
+    String(text ?? "").replace(
+      /20\d{2}\s*[-/]\s*20\d{2}.{0,8}?(?:秋季学期|春季学期|夏季学期|冬季学期|第?\s*[12一二]\s*学期|[12一二]学期)/,
+      "",
+    ),
+  );
+}
+
+function buildTranscriptColumnSequence(text) {
+  const rawLines = splitTranscriptRawLines(text);
+  const out = [];
+
+  for (const rawLine of rawLines) {
+    const columns = splitTranscriptColumnsFromLine(rawLine);
+    for (const columnText of columns) {
+      if (!columnText) continue;
+
+      const semester = findTranscriptSemesterInLine(columnText);
+      const cleaned = semester ? stripTranscriptSemesterText(columnText) : columnText;
+
+      if (semester && !cleaned) continue;
+      if (!cleaned) continue;
+      if (isTranscriptMetaLine(cleaned)) continue;
+      out.push(cleaned);
+    }
+  }
+
+  return out;
+}
+
+function getReorderedTranscriptText(text) {
+  return buildTranscriptColumnSequence(text).join("\n");
+}
+
+function normalizeTranscriptSemester(raw) {
+  const text = String(raw ?? "").trim();
+  if (!text) return "";
+  const match = text.match(/(20\d{2})\s*[-/]\s*(20\d{2}).{0,6}?(秋季|春季|夏季|冬季|[12一二])(?:学期)?/);
+  if (!match) return text;
+  const rawTerm = match[3];
+  const term = rawTerm === "一" ? "1"
+    : rawTerm === "二" ? "2"
+      : rawTerm === "秋季" ? "1"
+        : rawTerm === "春季" ? "2"
+          : rawTerm === "夏季" ? "3"
+            : rawTerm === "冬季" ? "4"
+              : rawTerm;
+  return `${match[1]}-${match[2]}-${term}`;
+}
+
+function findTranscriptSemesterInLine(line) {
+  const direct = String(line ?? "").match(/20\d{2}\s*[-/]\s*20\d{2}.{0,8}?(?:秋季学期|春季学期|夏季学期|冬季学期|第?\s*[12一二]\s*学期|[12一二]学期)/);
+  if (direct) return normalizeTranscriptSemester(direct[0]);
+  const compact = String(line ?? "").match(/20\d{2}\s*[-/]\s*20\d{2}\s*[-/]\s*[12]/);
+  if (compact) return compact[0].replace(/\s+/g, "");
+  return "";
+}
+
+function looksLikeTranscriptCourseCode(token) {
+  const value = String(token ?? "").trim();
+  return /^[A-Za-z0-9_-]{2,30}$/.test(value) && (/[A-Za-z]/.test(value) || /\d{4,}/.test(value));
+}
+
+function parseTranscriptCredits(token) {
+  const value = String(token ?? "").trim();
+  if (!/^\d+(?:\.\d{1,2})?$/.test(value)) return null;
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0 || num > 20) return null;
+  return num;
+}
+
+function parseTranscriptScore(token) {
+  const value = String(token ?? "").trim();
+  if (!/^\d{1,3}$/.test(value)) return null;
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0 || num > 100) return null;
+  return num;
+}
+
+function parseTranscriptGradeToken(token) {
+  const value = String(token ?? "").trim();
+  if (!value) return "";
+  if (/^(优秀|良好|中等|及格|不及格|通过|不通过|合格|不合格|A\+?|A-|B\+?|B-|C\+?|C-|D|F|P|NP)$/i.test(value)) return value;
+  return "";
+}
+
+function shouldSkipTranscriptPdfLine(line) {
+  return /^(序号|学号|姓名|学院|专业|课程类别|课程名称|成绩单|Transcript|GPA|平均学分绩点)/i.test(String(line ?? ""))
+    || /(课程名称.*学分.*成绩.*学分绩点)|(学分.*成绩.*学分绩点.*课程名称)/i.test(String(line ?? ""))
+    || isTranscriptMetaLine(line);
+}
+
+function isTranscriptSummaryLine(line) {
+  return /(总取得学分|总学分绩点|平均学分绩点|GPA|核算方法|制表单位|日期|页号|每门课学分绩点|平均学分绩点计算)/i.test(String(line ?? ""))
+    || /(?:^|\s)(?:A\(|A-\(|B\+\(|B\(|B-\(|C\+\(|C\(|C-\(|D\+\(|D\(|P\(|F\()/i.test(String(line ?? ""));
+}
+
+function looksLikeCourseName(text) {
+  const value = normalizeCourseName(text);
+  if (!value) return false;
+  if (value.length < 2 || value.length > 80) return false;
+  if (/^(学号|姓名|学院|专业|成绩单|课程类别|课程代码|课程名称|学分|成绩|等级|绩点|考试性质|修读方式)$/i.test(value)) return false;
+  return /[\u4e00-\u9fa5A-Za-z]/.test(value);
+}
+
+function dedupeTranscriptCourses(items) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items || []) {
+    const key = [item.code, item.name, item.credits, item.grade].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function buildTranscriptCourse({ code = "", name = "", credits = 0, grade = "" }) {
+  return {
+    code: normalizeCourseCode(code),
+    name: normalizeCourseName(name),
+    credits: Number.isFinite(Number(credits)) ? Number(credits) : 0,
+    grade: normalizeGrade(grade),
+  };
+}
+
+function parseTranscriptFromPdfText(text) {
+  const reorderedText = getReorderedTranscriptText(text);
+  const lines = splitTranscriptPdfLines(reorderedText);
+  const out = [];
+  let pendingName = "";
+  const gradePattern = "(?:A\\+?|A-|B\\+?|B-|C\\+?|C-|D|F|P|NP|\\d{2,3})";
+  const metricLineRe = new RegExp(`^(\\d+(?:\\.\\d+)?)\\s+(${gradePattern})\\s+\\d+(?:\\.\\d+)?$`, "i");
+  const inlineCourseRe = new RegExp(`^(.+?)\\s+(\\d+(?:\\.\\d+)?)\\s+(${gradePattern})\\s+\\d+(?:\\.\\d+)?$`, "i");
+
+  function pushCourse(name, credits, grade) {
+    const item = buildTranscriptCourse({ name, credits, grade });
+    if (!item.name) return;
+    if (!item.credits && !item.grade) return;
+    out.push(item);
+  }
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const rawLine = String(lines[i] ?? "").trim();
+    if (!rawLine) continue;
+    if (isTranscriptSummaryLine(rawLine)) continue;
+
+    const foundSemester = findTranscriptSemesterInLine(rawLine);
+    if (foundSemester) continue;
+
+    const line = rawLine;
+
+    if (shouldSkipTranscriptPdfLine(line)) continue;
+
+    const inlineMatch = line.match(inlineCourseRe);
+    if (inlineMatch) {
+      pushCourse(inlineMatch[1], inlineMatch[2], inlineMatch[3]);
+      pendingName = "";
+      continue;
+    }
+
+    const metricMatch = line.match(metricLineRe);
+    if (metricMatch) {
+      if (pendingName) pushCourse(pendingName, metricMatch[1], metricMatch[2]);
+      pendingName = "";
+      continue;
+    }
+
+    if (looksLikeCourseName(line)) {
+      pendingName = pendingName ? `${pendingName} ${line}` : line;
+    }
+  }
+
+  return dedupeTranscriptCourses(out);
+}
+
+function buildTranscriptParseSummary({ sourceFormat, courses }) {
+  const items = Array.isArray(courses) ? courses : [];
+  const gradeKinds = [...new Set(items.map((item) => String(item?.grade ?? "").trim()).filter(Boolean))];
+  return {
+    sourceFormat: String(sourceFormat ?? ""),
+    courseCount: items.length,
+    coursesWithCode: items.filter((item) => String(item?.code ?? "").trim()).length,
+    coursesWithCredits: items.filter((item) => Number(item?.credits || 0) > 0).length,
+    coursesWithGrade: items.filter((item) => String(item?.grade ?? "").trim()).length,
+    gradeKinds,
+  };
+}
+
 function extractHtmlTableRows(html) {
   const raw = String(html ?? "");
   const cleaned = raw
@@ -586,19 +864,21 @@ async function parseTranscriptFile({ filename, mime, buffer }) {
     return { format: "html", courses: parseTranscriptFromHtml(buffer.toString("utf8")) };
   }
   if (ext === ".pdf" || type.includes("pdf")) {
-    let pdfParse;
+    let PDFParse;
     try {
-      pdfParse = require("pdf-parse");
+      ({ PDFParse } = require("pdf-parse"));
     } catch {
       const err = new Error("暂不支持PDF解析，请导出HTML或CSV成绩单后再上传");
       err.code = "PDF_PARSE_UNSUPPORTED";
       throw err;
     }
-    const parsed = await pdfParse(buffer);
+    const parser = new PDFParse({ data: buffer });
+    const parsed = await parser.getText();
+    await parser.destroy().catch(() => {});
     const text = String(parsed?.text ?? "");
-    return { format: "pdf", courses: parseTranscriptFromCsvText(text) };
+    return { format: "pdf", courses: parseTranscriptFromPdfText(text) };
   }
-  const err = new Error("不支持的文件类型：请上传 HTML / CSV / TXT（可选 PDF）");
+  const err = new Error("不支持的文件类型：请上传 HTML / CSV / TXT / PDF");
   err.code = "UNSUPPORTED_FILE";
   throw err;
 }
@@ -1103,7 +1383,6 @@ async function main() {
   ensureDirSync(TEMPLATE_UPLOAD_DIR);
   ensureDirSync(HONOR_UPLOAD_DIR);
   ensureDirSync(ACTIVITY_UPLOAD_DIR);
-  ensureDirSync(TRANSCRIPT_UPLOAD_DIR);
   await ensureSeedDocumentTemplates(pool);
 
   const app = express();
@@ -2185,7 +2464,7 @@ async function main() {
       if (!plan) return fail(res, "PLAN_NOT_FOUND", "培养方案不存在，请联系管理员配置", 404);
 
       const latest = await pool.query(
-        "SELECT id, plan_name, source_format, file_path, courses, created_at FROM student_transcripts WHERE account_id=$1 ORDER BY created_at DESC LIMIT 1",
+        "SELECT id, plan_name, source_format, file_path, parsed_file_path, parsed_summary, courses, created_at FROM student_transcripts WHERE account_id=$1 ORDER BY created_at DESC LIMIT 1",
         [accountId],
       );
       const row = latest.rows?.[0] || null;
@@ -2215,7 +2494,10 @@ async function main() {
         transcript: {
           id: String(row.id),
           createdAt: Number(row.created_at || 0),
-          filePath: String(row.file_path ?? ""),
+          filePath: String(row.file_path ?? "") === TRANSCRIPT_PATH_PLACEHOLDER ? "" : String(row.file_path ?? ""),
+          parsedFilePath:
+            String(row.parsed_file_path ?? "") === TRANSCRIPT_PATH_PLACEHOLDER ? "" : String(row.parsed_file_path ?? ""),
+          parsedSummary: row.parsed_summary || {},
           sourceFormat: String(row.source_format ?? ""),
           planNameAtUpload: String(row.plan_name ?? ""),
         },
@@ -2287,20 +2569,23 @@ async function main() {
         const courses = Array.isArray(parsed.courses) ? parsed.courses : [];
         if (!courses.length) return fail(res, "NO_COURSES", "未识别到课程信息，请上传HTML/CSV格式的成绩单", 400);
 
-        const safeName = safeFileBaseName(originalName || "transcript");
-        const ext = path.extname(safeName).toLowerCase() || ".txt";
-        const stamp = Date.now();
-        const rand = crypto.randomBytes(6).toString("hex");
-        const stored = `${accountId}_${stamp}_${rand}${ext}`;
-        const rel = `uploads/transcript/${stored}`.replace(/\\/g, "/");
-        const full = resolveStoragePath(rel);
-        if (!full) return fail(res, "INVALID_PATH", "文件路径非法", 400);
-        fs.writeFileSync(full, buf);
-
         const now = Date.now();
+        const parseSummary = buildTranscriptParseSummary({
+          sourceFormat: parsed.format,
+          courses,
+        });
         await pool.query(
-          "INSERT INTO student_transcripts (account_id, plan_name, source_format, file_path, courses, created_at) VALUES ($1,$2,$3,$4,$5::jsonb,$6)",
-          [accountId, planName, parsed.format, `/${rel}`, JSON.stringify(courses), now],
+          "INSERT INTO student_transcripts (account_id, plan_name, source_format, file_path, parsed_file_path, parsed_summary, courses, created_at) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8)",
+          [
+            accountId,
+            planName,
+            parsed.format,
+            TRANSCRIPT_PATH_PLACEHOLDER,
+            TRANSCRIPT_PATH_PLACEHOLDER,
+            JSON.stringify(parseSummary),
+            JSON.stringify(courses),
+            now,
+          ],
         );
 
         const semester = String(req.query?.semester ?? "").trim() || defaultSemesterFromNow();
@@ -2322,7 +2607,7 @@ async function main() {
           semesterCourses,
           semester,
         });
-        ok(res, { ok: true, uploadedAt: now, filePath: `/${rel}`, ...report });
+        ok(res, { ok: true, uploadedAt: now, filePath: "", ...report });
       });
 
       req.pipe(busboy);
@@ -3165,9 +3450,13 @@ async function main() {
   });
 
   const server = app.listen(PORT, () => {});
-  server.on("error", () => {
+  server.on("error", (err) => {
+    console.error("Server failed to start:", err);
     process.exitCode = 1;
   });
 }
 
-main().catch(() => {});
+main().catch((err) => {
+  console.error("Application bootstrap failed:", err);
+  process.exitCode = 1;
+});
