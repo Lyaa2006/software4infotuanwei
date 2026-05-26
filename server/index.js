@@ -9,6 +9,7 @@ const { Pool } = require("pg");
 const PORT = Number(process.env.PORT || 3001);
 const TOKEN_SECRET = String(process.env.TOKEN_SECRET || "dev-secret-change-me");
 const TOKEN_EXPIRES_MS = Number(process.env.TOKEN_EXPIRES_MS || 7 * 24 * 60 * 60 * 1000);
+const TRANSCRIPT_PATH_PLACEHOLDER = "-";
 
 const DB_HOST = String(process.env.DB_HOST || "127.0.0.1");
 const DB_PORT = Number(process.env.DB_PORT || 54321);
@@ -203,30 +204,48 @@ async function ensureAcademicSchema(pool) {
     account_id VARCHAR(64) NOT NULL,
     plan_name VARCHAR(128) NOT NULL DEFAULT '',
     source_format VARCHAR(16) NOT NULL DEFAULT '',
-    file_path VARCHAR(512) NOT NULL DEFAULT '',
-    parsed_file_path VARCHAR(512) NOT NULL DEFAULT '',
+    file_path VARCHAR(512) NOT NULL DEFAULT '-',
+    parsed_file_path VARCHAR(512) NOT NULL DEFAULT '-',
     parsed_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
     courses JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at BIGINT NOT NULL
   )`);
 
   const transcriptColsResp = await pool.query(
-    "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='student_transcripts'",
+    "SELECT column_name, column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='student_transcripts'",
   );
   const transcriptCols = new Set((transcriptColsResp.rows || []).map((r) => String(r.column_name || "")));
+  const transcriptColDefaults = new Map(
+    (transcriptColsResp.rows || []).map((r) => [String(r.column_name || ""), String(r.column_default || "")]),
+  );
+  if (transcriptCols.has("file_path")) {
+    await pool.query("UPDATE student_transcripts SET file_path=$1 WHERE file_path IS NULL OR file_path=''", [TRANSCRIPT_PATH_PLACEHOLDER]);
+    if (!/^'-'::/.test(transcriptColDefaults.get("file_path") || "")) {
+      await pool.query("ALTER TABLE student_transcripts ALTER COLUMN file_path SET DEFAULT '-'");
+    }
+  }
   if (!transcriptCols.has("parsed_file_path")) {
-    await pool.query("ALTER TABLE student_transcripts ADD COLUMN parsed_file_path VARCHAR(512) NOT NULL DEFAULT ''");
+    await pool.query("ALTER TABLE student_transcripts ADD COLUMN parsed_file_path VARCHAR(512) NOT NULL DEFAULT '-'");
+  } else {
+    await pool.query(
+      "UPDATE student_transcripts SET parsed_file_path=$1 WHERE parsed_file_path IS NULL OR parsed_file_path=''",
+      [TRANSCRIPT_PATH_PLACEHOLDER],
+    );
+    if (!/^'-'::/.test(transcriptColDefaults.get("parsed_file_path") || "")) {
+      await pool.query("ALTER TABLE student_transcripts ALTER COLUMN parsed_file_path SET DEFAULT '-'");
+    }
   }
   if (!transcriptCols.has("parsed_summary")) {
     await pool.query("ALTER TABLE student_transcripts ADD COLUMN parsed_summary JSONB NOT NULL DEFAULT '{}'::jsonb");
+  } else {
+    await pool.query("UPDATE student_transcripts SET parsed_summary='{}'::jsonb WHERE parsed_summary IS NULL");
+    await pool.query("ALTER TABLE student_transcripts ALTER COLUMN parsed_summary SET DEFAULT '{}'::jsonb");
   }
 }
 
 const TEMPLATE_UPLOAD_DIR = path.join(__dirname, "templates", "uploads");
 const HONOR_UPLOAD_DIR = path.join(__dirname, "uploads", "honor");
 const ACTIVITY_UPLOAD_DIR = path.join(__dirname, "uploads", "activity");
-const TRANSCRIPT_UPLOAD_DIR = path.join(__dirname, "uploads", "transcript");
-
 function ensureDirSync(dirPath) {
   if (fs.existsSync(dirPath)) return;
   fs.mkdirSync(dirPath, { recursive: true });
@@ -760,7 +779,7 @@ function parseTranscriptFromPdfText(text) {
   return dedupeTranscriptCourses(out);
 }
 
-function buildTranscriptParseSummary({ sourceFormat, courses, debugTextPath, debugJsonPath }) {
+function buildTranscriptParseSummary({ sourceFormat, courses }) {
   const items = Array.isArray(courses) ? courses : [];
   const gradeKinds = [...new Set(items.map((item) => String(item?.grade ?? "").trim()).filter(Boolean))];
   return {
@@ -770,9 +789,6 @@ function buildTranscriptParseSummary({ sourceFormat, courses, debugTextPath, deb
     coursesWithCredits: items.filter((item) => Number(item?.credits || 0) > 0).length,
     coursesWithGrade: items.filter((item) => String(item?.grade ?? "").trim()).length,
     gradeKinds,
-    debugTextPath: String(debugTextPath ?? ""),
-    debugJsonPath: String(debugJsonPath ?? ""),
-    debugReorderedTextPath: "",
   };
 }
 
@@ -1367,7 +1383,6 @@ async function main() {
   ensureDirSync(TEMPLATE_UPLOAD_DIR);
   ensureDirSync(HONOR_UPLOAD_DIR);
   ensureDirSync(ACTIVITY_UPLOAD_DIR);
-  ensureDirSync(TRANSCRIPT_UPLOAD_DIR);
   await ensureSeedDocumentTemplates(pool);
 
   const app = express();
@@ -2479,8 +2494,9 @@ async function main() {
         transcript: {
           id: String(row.id),
           createdAt: Number(row.created_at || 0),
-          filePath: String(row.file_path ?? ""),
-          parsedFilePath: String(row.parsed_file_path ?? ""),
+          filePath: String(row.file_path ?? "") === TRANSCRIPT_PATH_PLACEHOLDER ? "" : String(row.file_path ?? ""),
+          parsedFilePath:
+            String(row.parsed_file_path ?? "") === TRANSCRIPT_PATH_PLACEHOLDER ? "" : String(row.parsed_file_path ?? ""),
           parsedSummary: row.parsed_summary || {},
           sourceFormat: String(row.source_format ?? ""),
           planNameAtUpload: String(row.plan_name ?? ""),
@@ -2553,57 +2569,23 @@ async function main() {
         const courses = Array.isArray(parsed.courses) ? parsed.courses : [];
         if (!courses.length) return fail(res, "NO_COURSES", "未识别到课程信息，请上传HTML/CSV格式的成绩单", 400);
 
-        const safeName = safeFileBaseName(originalName || "transcript");
-        const ext = path.extname(safeName).toLowerCase() || ".txt";
-        const stamp = Date.now();
-        const rand = crypto.randomBytes(6).toString("hex");
-        const stored = `${accountId}_${stamp}_${rand}${ext}`;
-        const rel = `uploads/transcript/${stored}`.replace(/\\/g, "/");
-        const full = resolveStoragePath(rel);
-        if (!full) return fail(res, "INVALID_PATH", "文件路径非法", 400);
-        fs.writeFileSync(full, buf);
-
         const now = Date.now();
-        const parsedJsonName = `${accountId}_${stamp}_${rand}_parsed.json`;
-        const parsedJsonRel = `uploads/transcript/${parsedJsonName}`.replace(/\\/g, "/");
-        const parsedJsonFull = resolveStoragePath(parsedJsonRel);
-        if (!parsedJsonFull) return fail(res, "INVALID_PATH", "文件路径非法", 400);
-        const reorderedTextName = `${accountId}_${stamp}_${rand}_reordered.txt`;
-        const reorderedTextRel = `uploads/transcript/${reorderedTextName}`.replace(/\\/g, "/");
-        const reorderedTextFull = resolveStoragePath(reorderedTextRel);
-        if (!reorderedTextFull) return fail(res, "INVALID_PATH", "文件路径非法", 400);
-        const reorderedText = parsed.format === "pdf" ? getReorderedTranscriptText(fs.readFileSync(path.join(__dirname, "debug-pdf-text.txt"), "utf8")) : "";
-        if (reorderedText) {
-          fs.writeFileSync(reorderedTextFull, reorderedText, "utf8");
-        }
         const parseSummary = buildTranscriptParseSummary({
           sourceFormat: parsed.format,
           courses,
-          debugTextPath: "/debug-pdf-text.txt",
-          debugJsonPath: `/${parsedJsonRel}`,
         });
-        parseSummary.debugReorderedTextPath = reorderedText ? `/${reorderedTextRel}` : "";
-        fs.writeFileSync(
-          parsedJsonFull,
-          JSON.stringify(
-            {
-              sourceFormat: parsed.format,
-              uploadedAt: now,
-              originalFile: `/${rel}`,
-              accountId,
-              planName,
-              summary: parseSummary,
-              reorderedTextPath: parseSummary.debugReorderedTextPath,
-              courses,
-            },
-            null,
-            2,
-          ),
-          "utf8",
-        );
         await pool.query(
           "INSERT INTO student_transcripts (account_id, plan_name, source_format, file_path, parsed_file_path, parsed_summary, courses, created_at) VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8)",
-          [accountId, planName, parsed.format, `/${rel}`, `/${parsedJsonRel}`, JSON.stringify(parseSummary), JSON.stringify(courses), now],
+          [
+            accountId,
+            planName,
+            parsed.format,
+            TRANSCRIPT_PATH_PLACEHOLDER,
+            TRANSCRIPT_PATH_PLACEHOLDER,
+            JSON.stringify(parseSummary),
+            JSON.stringify(courses),
+            now,
+          ],
         );
 
         const semester = String(req.query?.semester ?? "").trim() || defaultSemesterFromNow();
@@ -2625,7 +2607,7 @@ async function main() {
           semesterCourses,
           semester,
         });
-        ok(res, { ok: true, uploadedAt: now, filePath: `/${rel}`, ...report });
+        ok(res, { ok: true, uploadedAt: now, filePath: "", ...report });
       });
 
       req.pipe(busboy);
@@ -3468,9 +3450,13 @@ async function main() {
   });
 
   const server = app.listen(PORT, () => {});
-  server.on("error", () => {
+  server.on("error", (err) => {
+    console.error("Server failed to start:", err);
     process.exitCode = 1;
   });
 }
 
-main().catch(() => {});
+main().catch((err) => {
+  console.error("Application bootstrap failed:", err);
+  process.exitCode = 1;
+});
