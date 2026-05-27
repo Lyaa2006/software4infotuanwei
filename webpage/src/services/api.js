@@ -117,8 +117,8 @@ const featureApi = {
   async certAdminTemplateList() { return await request({ method: 'GET', path: '/api/cert/admin/templates', auth: true }) },
   // supports base64 upload (as in mini program)
   async certAdminTemplateUpload({ title, category, format, fileName, fileBase64 }) { const fmt = format === 'xlsx' ? 'xlsx' : format === 'txt' ? 'txt' : 'html'; return await request({ method: 'POST', path: '/api/cert/admin/templates', data: { title: String(title ?? ''), category: String(category ?? ''), format: fmt, fileName: String(fileName ?? ''), fileBase64: String(fileBase64 ?? '') }, auth: true }) },
-  async certTemplateFileDownloadUrl(id) { return `/api/cert/templates/${encodeURIComponent(id)}/file` },
-  async certTemplatePdfUrl(id, params) { const q = buildQuery(params); return `/api/cert/templates/${encodeURIComponent(id)}/pdf${q}` },
+  certTemplateFileDownloadUrl(id) { return `/api/cert/templates/${encodeURIComponent(id)}/file` },
+  certTemplatePdfUrl(id, params) { const q = buildQuery(params); return `/api/cert/templates/${encodeURIComponent(id)}/pdf${q}` },
 
   async academicPlans() { return await request({ method: 'GET', path: '/api/academic/plans', auth: true }) },
   async academicStudentReport({ semester, planName }) { const q = buildQuery({ semester, planName }); return await request({ method: 'GET', path: `/api/academic/student/report${q}`, auth: true }) },
