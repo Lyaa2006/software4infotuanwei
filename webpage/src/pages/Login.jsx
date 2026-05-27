@@ -24,30 +24,60 @@ export default function Login() {
   }
 
   return (
-    <div className="container">
-      <div className="card" style={{ maxWidth: 480, margin: '0 auto' }}>
-        <h2>登录</h2>
-        <form onSubmit={onSubmit}>
-          <div className="form-row">
-            <label>角色</label>
-            <select className="input" value={role} onChange={e => setRole(e.target.value)}>
-              <option value="student">学生</option>
-              <option value="admin">管理员</option>
-            </select>
+    <main className="login-shell">
+      <section className="login-card">
+        <div className="login-brand">
+          <div>
+            <span className="badge green">信息学院</span>
+            <h1>学生综合服务与党团管理平台</h1>
+            <p>面向学生事务、党团管理与信息服务的一体化平台，支持学生自助办理与管理端审核维护。</p>
           </div>
-          <div className="form-row">
-            <label>学工号 / 账号</label>
-            <input className="input" value={accountId} onChange={e => setAccountId(e.target.value)} />
+          <div className="login-meta">
+            <span className="badge">学生服务</span>
+            <span className="badge amber">党团流程</span>
+            <span className="badge green">学院通知</span>
           </div>
-          <div className="form-row">
-            <label>密码</label>
-            <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} />
-          </div>
-          <div className="form-row">
-            <button className="btn" type="submit" disabled={loading}>{loading ? '登录中...' : '登录'}</button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </div>
+
+        <div className="login-panel">
+          <h2>账号登录</h2>
+          <p className="page-subtitle">请选择身份并使用学工号或管理员账号进入系统。</p>
+
+          <form onSubmit={onSubmit}>
+            <div className="form-row">
+              <label htmlFor="login-role">角色</label>
+              <select id="login-role" className="input" value={role} onChange={e => setRole(e.target.value)}>
+                <option value="student">学生</option>
+                <option value="admin">管理员</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label htmlFor="login-account">学工号 / 账号</label>
+              <input
+                id="login-account"
+                className="input"
+                value={accountId}
+                autoComplete="username"
+                onChange={e => setAccountId(e.target.value)}
+              />
+            </div>
+            <div className="form-row">
+              <label htmlFor="login-password">密码</label>
+              <input
+                id="login-password"
+                className="input"
+                type="password"
+                value={password}
+                autoComplete="current-password"
+                onChange={e => setPassword(e.target.value)}
+              />
+            </div>
+            <button className="btn login-submit" type="submit" disabled={loading}>
+              {loading ? '登录中...' : '登录'}
+            </button>
+          </form>
+        </div>
+      </section>
+    </main>
   )
 }
