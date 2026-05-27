@@ -20,9 +20,10 @@ function setBaseUrl(baseUrl) {
   const normalized = String(baseUrl || "").trim().replace(/\/+$/, "");
   if (!normalized) {
     wx.removeStorageSync(STORAGE_KEYS.apiBaseUrl);
-    return;
+    return "";
   }
   wx.setStorageSync(STORAGE_KEYS.apiBaseUrl, normalized);
+  return normalized;
 }
 
 function normalizeAccountId(accountId) {

@@ -17,6 +17,11 @@ lerna-debug.log*
 .env.*
 *.local
 
+*.pem
+*.key
+*.p12
+*.pfx
+
 .DS_Store
 Thumbs.db
 Desktop.ini
@@ -31,3 +36,14 @@ project.private.config.json
 
 server/uploads/
 server/uploads/**
+
+/data/
+server/backup_permitted.js
+server/db_check.js
+
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.bak
+*.sql.gz
