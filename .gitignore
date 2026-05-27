@@ -31,3 +31,6 @@ project.private.config.json
 
 server/uploads/
 server/uploads/**
+
+
+data/
