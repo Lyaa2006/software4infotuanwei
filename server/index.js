@@ -441,6 +441,13 @@ function normalizeYmdInput(value) {
   return s;
 }
 
+function normalizeAssetPath(value) {
+  const s = String(value ?? "").trim().replace(/\\/g, "/");
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  return `/${s.replace(/^\/+/, "")}`;
+}
+
 function safeFileBaseName(name) {
   const s = String(name ?? "")
     .replace(/[^\w.\-()]+/g, "_")
@@ -2107,6 +2114,34 @@ async function main() {
     }
   });
 
+  app.delete("/api/cert/admin/templates/:id", authRequired, adminRequired, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id) return fail(res, "EMPTY_ID", "缺少ID");
+
+      const resp = await pool.query(
+        "SELECT id, storage_path FROM document_templates WHERE id=$1 LIMIT 1",
+        [id],
+      );
+      const row = resp.rows?.[0] || null;
+      if (!row) return fail(res, "NOT_FOUND", "模板不存在", 404);
+
+      await pool.query("DELETE FROM document_templates WHERE id=$1", [id]);
+
+      const storagePath = String(row.storage_path ?? "");
+      if (storagePath.startsWith("templates/uploads/")) {
+        const full = resolveStoragePath(storagePath);
+        if (full && fs.existsSync(full)) {
+          fs.unlinkSync(full);
+        }
+      }
+
+      ok(res, { ok: true });
+    } catch (e) {
+      fail(res, "SERVER_ERROR", "服务器异常", 500);
+    }
+  });
+
   app.get("/api/cert/templates/:id/file", authRequired, async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -2247,7 +2282,7 @@ async function main() {
         description: String(r.description ?? ""),
         issuer: String(r.issuer ?? ""),
         honorDate: toYmd(r.honor_date),
-        imagePath: String(r.image_path ?? ""),
+        imagePath: normalizeAssetPath(r.image_path),
         isPublic: !!r.is_public,
         createdAt: Number(r.created_at || 0),
         updatedAt: Number(r.updated_at || 0),
@@ -2275,7 +2310,7 @@ async function main() {
         description: String(r.description ?? ""),
         issuer: String(r.issuer ?? ""),
         honorDate: toYmd(r.honor_date),
-        imagePath: String(r.image_path ?? ""),
+        imagePath: normalizeAssetPath(r.image_path),
         isPublic: !!r.is_public,
         createdAt: Number(r.created_at || 0),
         updatedAt: Number(r.updated_at || 0),
@@ -2303,7 +2338,7 @@ async function main() {
       const issuer = String(req.body?.issuer ?? "").trim();
       const honorDate = normalizeYmdInput(req.body?.honorDate);
       const isPublic = req.body?.isPublic === false ? false : true;
-      const imagePath = String(req.body?.imagePath ?? "").trim();
+      const imagePath = normalizeAssetPath(req.body?.imagePath);
 
       const now = Date.now();
       const insert = await pool.query(
@@ -2332,7 +2367,7 @@ async function main() {
       const issuer = String(req.body?.issuer ?? "").trim();
       const honorDate = normalizeYmdInput(req.body?.honorDate);
       const isPublic = req.body?.isPublic === false ? false : true;
-      const imagePath = String(req.body?.imagePath ?? "").trim();
+      const imagePath = normalizeAssetPath(req.body?.imagePath);
 
       const now = Date.now();
       const upd = await pool.query(
@@ -2392,8 +2427,7 @@ async function main() {
         const stamp = Date.now();
         const rand = crypto.randomBytes(6).toString("hex");
         const stored = `${accountId}_${stamp}_${rand}${finalExt}`;
-  // return a path that starts with a leading slash so frontend can use it as an absolute URL
-  const rel = (`/uploads/honor/${stored}`).replace(/\\/g, "/");
+        const rel = `uploads/honor/${stored}`.replace(/\\/g, "/");
         const full = resolveStoragePath(rel);
         if (!full) {
           file.resume();

@@ -47,6 +47,13 @@ function tryReadServerError(tempFilePath) {
   }
 }
 
+function resolveOpenFileType(format) {
+  const normalized = String(format || "").toLowerCase();
+  if (normalized === "xlsx") return "xlsx";
+  if (normalized === "txt") return "txt";
+  return undefined;
+}
+
 Page({
   data: {
     isAdmin: false,
@@ -81,7 +88,9 @@ Page({
     wx.showLoading({ title: "加载中..." });
     try {
       const api = require("../../services/api");
-      const resp = await api.featureApi.certTemplateList();
+      const resp = this.data.isAdmin
+        ? await api.featureApi.certAdminTemplateList()
+        : await api.featureApi.certTemplateList();
       const templates = Array.isArray(resp.items) ? resp.items : [];
       this.setData({ templates });
     } catch (e) {
@@ -168,8 +177,32 @@ Page({
     }
   },
 
+  openHtmlTemplate(tempFilePath, title) {
+    try {
+      const fs = wx.getFileSystemManager();
+      const html = fs.readFileSync(tempFilePath, "utf8");
+      if (!html) {
+        wx.showToast({ title: "模板内容为空", icon: "none" });
+        return;
+      }
+      wx.setStorageSync("certificate_template_preview", {
+        title: String(title || "模板预览"),
+        html: String(html),
+        tempFilePath: String(tempFilePath),
+        savedAt: Date.now(),
+      });
+      wx.navigateTo({
+        url: `/pages/certificatePreview/index?title=${encodeURIComponent(String(title || "模板预览"))}`,
+      });
+    } catch {
+      wx.showToast({ title: "读取模板失败", icon: "none" });
+    }
+  },
+
   onDownloadTemplate(e) {
     const id = String(e.currentTarget.dataset.id || "");
+    const format = String(e.currentTarget.dataset.format || "").toLowerCase();
+    const title = String(e.currentTarget.dataset.title || "模板预览");
     if (!id) return;
     const api = require("../../services/api");
     const session = api.auth.getSession();
@@ -179,15 +212,20 @@ Page({
       header: buildAuthHeader(session),
       success: (r) => {
         if (Number(r.statusCode || 0) !== 200) {
-          const msg = tryReadServerError(r.tempFilePath) || `下载失败（${r.statusCode}）`;
+          const msg = tryReadServerError(r.tempFilePath) || `下载失败：${r.statusCode}`;
           wx.showToast({ title: msg, icon: "none" });
+          return;
+        }
+        if (format === "html") {
+          this.openHtmlTemplate(r.tempFilePath, title);
           return;
         }
         wx.openDocument({
           filePath: r.tempFilePath,
+          fileType: resolveOpenFileType(format),
           showMenu: true,
-          fail: () => {
-            wx.showToast({ title: "已下载", icon: "none" });
+          fail: (err) => {
+            wx.showToast({ title: err?.errMsg || "打开失败", icon: "none" });
           },
         });
       },
@@ -214,12 +252,12 @@ Page({
       header: buildAuthHeader(session),
       success: (r) => {
         if (Number(r.statusCode || 0) !== 200) {
-          const msg = tryReadServerError(r.tempFilePath) || `生成失败（${r.statusCode}）`;
+          const msg = tryReadServerError(r.tempFilePath) || `生成失败：${r.statusCode}`;
           wx.showToast({ title: msg, icon: "none" });
           return;
         }
         if (!isPdfFile(r.tempFilePath)) {
-          const msg = tryReadServerError(r.tempFilePath) || "生成失败（返回内容不是PDF）";
+          const msg = tryReadServerError(r.tempFilePath) || "生成失败：返回内容不是 PDF";
           wx.showToast({ title: msg, icon: "none" });
           return;
         }
@@ -234,6 +272,30 @@ Page({
       },
       fail: (err) => {
         wx.showToast({ title: err?.errMsg || "生成失败", icon: "none" });
+      },
+    });
+  },
+
+  onDeleteTemplate(e) {
+    if (!this.data.isAdmin) return;
+    const id = String(e.currentTarget.dataset.id || "");
+    if (!id) return;
+    wx.showModal({
+      title: "删除模板",
+      content: "删除后不可恢复，确认继续吗？",
+      success: async (res) => {
+        if (!res.confirm) return;
+        wx.showLoading({ title: "删除中..." });
+        try {
+          const api = require("../../services/api");
+          await api.featureApi.certAdminTemplateDelete({ id });
+          wx.showToast({ title: "删除成功", icon: "success" });
+          await this.loadTemplates();
+        } catch (e2) {
+          wx.showToast({ title: e2?.message || "删除失败", icon: "none" });
+        } finally {
+          wx.hideLoading();
+        }
       },
     });
   },

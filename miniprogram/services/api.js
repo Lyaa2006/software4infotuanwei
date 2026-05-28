@@ -3,7 +3,7 @@ const STORAGE_KEYS = {
   apiBaseUrl: "api_base_url_v1",
 };
 
-const DEFAULT_BASE_URL = "http://127.0.0.1:3001";
+const DEFAULT_BASE_URL = "http://127.0.0.1:54321";
 
 function getBaseUrl() {
   const app = typeof getApp === "function" ? getApp() : null;
@@ -193,7 +193,22 @@ const featureApi = {
     });
   },
   async partyLeagueProcess({ payload }) {
-    return { success: false, payload };
+    const session = getSession();
+    const normalized = normalizeAccountId(payload?.accountId);
+    if (session?.role === "admin" && normalized) {
+      return await request({
+        method: "GET",
+        path: `/api/party/admin/students/${encodeURIComponent(normalized)}`,
+        data: {},
+        auth: true,
+      });
+    }
+    return await request({
+      method: "GET",
+      path: "/api/party/student/me",
+      data: {},
+      auth: true,
+    });
   },
   async reminderMyList() {
     return await request({
@@ -281,6 +296,14 @@ const featureApi = {
         fileName: String(fileName ?? ""),
         fileBase64: String(fileBase64 ?? ""),
       },
+      auth: true,
+    });
+  },
+  async certAdminTemplateDelete({ id }) {
+    return await request({
+      method: "DELETE",
+      path: `/api/cert/admin/templates/${encodeURIComponent(String(id ?? ""))}`,
+      data: {},
       auth: true,
     });
   },

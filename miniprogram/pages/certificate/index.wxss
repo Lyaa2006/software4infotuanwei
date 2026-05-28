@@ -68,6 +68,11 @@ page {
   background: rgba(0, 0, 0, 0.06);
 }
 
+.danger {
+  color: #b42318;
+  background: #fee4e2;
+}
+
 .list {
   display: flex;
   flex-direction: column;
