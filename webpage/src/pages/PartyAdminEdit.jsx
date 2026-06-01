@@ -224,27 +224,27 @@ export default function PartyAdminEdit() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
             <div>入党申请日期</div>
-            <input type="date" value={profile.applicationDate || ''} onChange={e => onDateChange('applicationDate', e.target.value)} />
+            <input className="input" placeholder="YYYY-MM-DD" value={profile.applicationDate || ''} onChange={e => onDateChange('applicationDate', e.target.value)} />
           </div>
           <div>
             <div>入党积极分子日期</div>
-            <input type="date" value={profile.activistDate || ''} onChange={e => onDateChange('activistDate', e.target.value)} />
+            <input className="input" placeholder="YYYY-MM-DD" value={profile.activistDate || ''} onChange={e => onDateChange('activistDate', e.target.value)} />
           </div>
           <div>
             <div>发展对象日期</div>
-            <input type="date" value={profile.devObjectDate || ''} onChange={e => onDateChange('devObjectDate', e.target.value)} />
+            <input className="input" placeholder="YYYY-MM-DD" value={profile.devObjectDate || ''} onChange={e => onDateChange('devObjectDate', e.target.value)} />
           </div>
           <div>
             <div>预备党员日期</div>
-            <input type="date" value={profile.probationaryDate || ''} onChange={e => onDateChange('probationaryDate', e.target.value)} />
+            <input className="input" placeholder="YYYY-MM-DD" value={profile.probationaryDate || ''} onChange={e => onDateChange('probationaryDate', e.target.value)} />
           </div>
           <div>
             <div>预备期满转正日期</div>
-            <input type="date" value={profile.probationaryFullYearDate || ''} onChange={e => onDateChange('probationaryFullYearDate', e.target.value)} />
+            <input className="input" placeholder="YYYY-MM-DD" value={profile.probationaryFullYearDate || ''} onChange={e => onDateChange('probationaryFullYearDate', e.target.value)} />
           </div>
           <div>
             <div>正式党员日期</div>
-            <input type="date" value={profile.fullMemberDate || ''} onChange={e => onDateChange('fullMemberDate', e.target.value)} />
+            <input className="input" placeholder="YYYY-MM-DD" value={profile.fullMemberDate || ''} onChange={e => onDateChange('fullMemberDate', e.target.value)} />
           </div>
         </div>
 
@@ -259,11 +259,11 @@ export default function PartyAdminEdit() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
           <div>
             <div>下次述职到期</div>
-            <input type="date" value={profile.nextReportDue || ''} onChange={e => onNextDueChange('nextReportDue', e.target.value)} />
+            <input className="input" placeholder="YYYY-MM-DD" value={profile.nextReportDue || ''} onChange={e => onNextDueChange('nextReportDue', e.target.value)} />
           </div>
           <div>
             <div>下次谈话到期</div>
-            <input type="date" value={profile.nextTalkDue || ''} onChange={e => onNextDueChange('nextTalkDue', e.target.value)} />
+            <input className="input" placeholder="YYYY-MM-DD" value={profile.nextTalkDue || ''} onChange={e => onNextDueChange('nextTalkDue', e.target.value)} />
           </div>
         </div>
 
