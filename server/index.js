@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const { Pool } = require("pg");
+const { Pool, types } = require("pg");
 
 
 const PORT = Number(process.env.PORT || 3001);
@@ -16,6 +16,9 @@ const DB_PORT = Number(process.env.DB_PORT || 54321);
 const DB_USER = String(process.env.DB_USER || "system");
 const DB_PASSWORD = String(process.env.DB_PASSWORD || "123456");
 const DB_NAME = String(process.env.DB_NAME || "student_service_platform");
+
+const PG_DATE_OID = 1082;
+types.setTypeParser(PG_DATE_OID, (value) => String(value ?? ""));
 
 const PARTY_STAGES = [
   { value: "group_assessment", label: "党课学习小组学习", status: "党课学习小组学习中" },
@@ -1160,7 +1163,11 @@ function hasTag(tags, tagValue) {
 
 function toYmd(value) {
   if (!value) return "";
-  if (typeof value === "string") return value.slice(0, 10);
+  if (typeof value === "string") {
+    const s = value.trim();
+    const match = s.match(/^(\d{4}-\d{2}-\d{2})(?:$|[T\s])/);
+    return match ? match[1] : "";
+  }
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return "";
   const y = d.getUTCFullYear();
