@@ -5,19 +5,27 @@ const STORAGE_KEYS = {
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:3001";
 
+function normalizeApiBaseUrl(input) {
+  let base = String(input || "").trim();
+  if (!base) return "";
+  base = base.replace(/\/+$/, "");
+  if (/\/api$/i.test(base)) base = base.replace(/\/api$/i, "");
+  return base.replace(/\/+$/, "");
+}
+
 function getBaseUrl() {
   const app = typeof getApp === "function" ? getApp() : null;
   const globalBaseUrl = String(app?.globalData?.apiBaseUrl || "").trim();
-  if (globalBaseUrl) return globalBaseUrl.replace(/\/+$/, "");
+  if (globalBaseUrl) return normalizeApiBaseUrl(globalBaseUrl);
 
   const storedBaseUrl = String(wx.getStorageSync(STORAGE_KEYS.apiBaseUrl) || "").trim();
-  if (storedBaseUrl) return storedBaseUrl.replace(/\/+$/, "");
+  if (storedBaseUrl) return normalizeApiBaseUrl(storedBaseUrl);
 
-  return DEFAULT_BASE_URL;
+  return normalizeApiBaseUrl(DEFAULT_BASE_URL);
 }
 
 function setBaseUrl(baseUrl) {
-  const normalized = String(baseUrl || "").trim().replace(/\/+$/, "");
+  const normalized = normalizeApiBaseUrl(baseUrl);
   if (!normalized) {
     wx.removeStorageSync(STORAGE_KEYS.apiBaseUrl);
     return;

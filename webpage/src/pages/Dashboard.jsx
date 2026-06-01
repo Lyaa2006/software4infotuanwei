@@ -65,10 +65,10 @@ export default function Dashboard() {
       return nav('/party/student')
     }
     if (key === 'reminder') return nav('/reminder')
-    if (key === 'certificate') return nav('/certificate')
+    if (key === 'certificate') return alert('开发中，敬请期待')
     if (key === 'honor') return nav('/honor')
     if (key === 'activity') return nav('/activity')
-    if (key === 'academic') return nav('/academic')
+    if (key === 'academic') return alert('开发中，敬请期待')
     alert(`${key} 开发中`)
   }
 

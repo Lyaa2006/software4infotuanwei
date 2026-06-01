@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
 export default function Certificate() {
+  const featureDisabled = true
   const [templates, setTemplates] = useState([])
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -12,10 +14,20 @@ export default function Certificate() {
   const [isAdmin, setIsAdmin] = useState(false)
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadCategory, setUploadCategory] = useState('')
-
-  useEffect(() => { loadTemplates() }, [])
+  const nav = useNavigate()
 
   useEffect(() => {
+    if (!featureDisabled) return
+    alert('开发中，敬请期待')
+  }, [])
+
+  useEffect(() => {
+    if (featureDisabled) return
+    loadTemplates()
+  }, [])
+
+  useEffect(() => {
+    if (featureDisabled) return
     const s = api.auth.getSession()
     setIsAdmin(s?.role === 'admin')
   }, [])
@@ -27,6 +39,12 @@ export default function Certificate() {
   async function onUploadTemplate(e) {
     const file = (e.target.files || [])[0]
     if (!file) return
+    const uploadDisabled = true
+    if (uploadDisabled) {
+      alert('开发中，敬请期待')
+      e.target.value = ''
+      return
+    }
     if (uploading) return
     setUploading(true)
     try {
@@ -112,6 +130,16 @@ export default function Certificate() {
     } catch (e) {
       alert(e?.message || '生成失败')
     }
+  }
+
+  if (featureDisabled) {
+    return (
+      <div className="container">
+        <h2>电子证明模板</h2>
+        <p className="empty-state">开发中，敬请期待</p>
+        <button className="btn" onClick={() => nav('/')}>返回首页</button>
+      </div>
+    )
   }
 
   return (
