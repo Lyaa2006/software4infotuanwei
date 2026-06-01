@@ -177,6 +177,11 @@ export default function Activity() {
 
   async function uploadPhotos(files) {
     if (!files || !files.length) return
+    const uploadDisabled = true
+    if (uploadDisabled) {
+      alert('开发中，敬请期待')
+      return
+    }
     const apiSvc = api
     const baseUrl = apiSvc.getBaseUrl()
     const outPaths = []
@@ -293,7 +298,7 @@ export default function Activity() {
       <div className="card">
         <h3>我的活动</h3>
         <div style={{ marginBottom: 8 }}>
-          <label className="btn">上传活动照片<input type="file" style={{ display: 'none' }} multiple onChange={(e) => uploadPhotos(e.target.files)} /></label>
+          <label className="btn">上传活动照片<input type="file" style={{ display: 'none' }} multiple onChange={(e) => { uploadPhotos(e.target.files); e.target.value = '' }} /></label>
           <span style={{ marginLeft: 8 }}>{uploading ? '上传中...' : ''}</span>
         </div>
         <ul style={{ listStyle: 'none', padding: 0 }}>
@@ -400,7 +405,7 @@ export default function Activity() {
           <input className="input" placeholder="协助者（逗号或换行分隔）" value={formHelpers} onChange={(e) => setFormHelpers(e.target.value)} />
         </div>
         <div style={{ marginBottom: 8 }}>
-          <label className="btn">选择照片<input type="file" style={{ display: 'none' }} multiple onChange={(e) => uploadPhotos(e.target.files)} /></label>
+          <label className="btn">选择照片<input type="file" style={{ display: 'none' }} multiple onChange={(e) => { uploadPhotos(e.target.files); e.target.value = '' }} /></label>
           <button className="btn" style={{ marginLeft: 8 }} onClick={onClearPhotos}>清除照片</button>
         </div>
         <div style={{ marginTop: 8 }}>{formPhotos.map((u) => <img key={u} src={u} alt="p" style={{ maxWidth: 120, marginLeft: 8 }} />)}</div>
