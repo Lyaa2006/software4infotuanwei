@@ -28,6 +28,7 @@ const featureGroups = [
     title: '班团与管理',
     items: [
       { key: 'activity', title: '班团活动管理', desc: '提交活动、上传照片，管理员进行活动审核。' },
+      { key: 'tagManagement', title: '学生标签管理', desc: '集中维护学生标签，供通知精准发送使用。' },
     ],
   },
 ]
@@ -68,6 +69,7 @@ export default function Dashboard() {
     if (key === 'certificate') return alert('开发中，敬请期待')
     if (key === 'honor') return nav('/honor')
     if (key === 'activity') return nav('/activity')
+    if (key === 'tagManagement') return nav('/tag-management')
     if (key === 'academic') return alert('开发中，敬请期待')
     alert(`${key} 开发中`)
   }

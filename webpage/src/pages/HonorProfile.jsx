@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
 function isValidYmd(value) {
@@ -13,6 +13,7 @@ function isValidYmd(value) {
 
 export default function HonorProfile() {
   const { accountId } = useParams()
+  const navigate = useNavigate()
   const [items, setItems] = useState([])
   const [userTitle, setUserTitle] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -154,7 +155,10 @@ export default function HonorProfile() {
 
   return (
     <div className="container">
+      <div className="page-toolbar">
       <h2>{userTitle || `荣誉：${accountId}`}</h2>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => navigate('/')}>返回首页</button>
+      </div>
       <div className="card">
         {isEditable && (
           <div style={{ marginBottom: 12 }}>

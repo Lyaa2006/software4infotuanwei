@@ -457,6 +457,14 @@ function hasInvalidYmdInput(value) {
   return !!raw && !normalizeYmdInput(raw);
 }
 
+function localTodayYmd() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return y + '-' + m + '-' + day;
+}
+
 function validatePartyDateOrder(dates) {
   const pairs = [
     ["入党申请时间", dates.applicationDate],
@@ -472,6 +480,21 @@ function validatePartyDateOrder(dates) {
     if (prevValue > currValue) {
       return `${currLabel}不能早于${prevLabel}`;
     }
+  }
+  return "";
+}
+
+function validatePartyHistoricalDatesNotFuture(dates, todayYmd) {
+  const pairs = [
+    ['入党申请时间', dates.applicationDate],
+    ['确定为入党积极分子时间', dates.activistDate],
+    ['确定为发展对象时间', dates.devObjectDate],
+    ['接收为预备党员时间', dates.probationaryDate],
+    ['预备期满一年时间', dates.probationaryFullYearDate],
+    ['转为正式党员时间', dates.fullMemberDate],
+  ].filter(([, value]) => !!value);
+  for (const [label, value] of pairs) {
+    if (todayYmd && value > todayYmd) return label + '不能设置为未来日期';
   }
   return "";
 }
@@ -1644,7 +1667,6 @@ async function main() {
       if (!row) return fail(res, "NOT_FOUND", "学生信息不存在", 404);
 
       const mapped = mapPartyStudentRow(row);
-      const today = toYmd(new Date());
       const fallbackReport =
         mapped.nextReportDue || (mapped.activistDate ? nextDueFromStart({ startYmd: mapped.activistDate, periodMonths: 3, nowYmd: today }) : "");
       const fallbackTalk =
@@ -1735,6 +1757,17 @@ async function main() {
       if (hasInvalidYmdInput(req.body?.probationaryDate)) return fail(res, "INVALID_DATE", "接收为预备党员时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
       if (hasInvalidYmdInput(req.body?.probationaryFullYearDate)) return fail(res, "INVALID_DATE", "预备期满一年时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
       if (hasInvalidYmdInput(req.body?.fullMemberDate)) return fail(res, "INVALID_DATE", "转为正式党员时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      const today = localTodayYmd();
+      const futureDateError = validatePartyHistoricalDatesNotFuture({
+        applicationDate,
+        activistDate,
+        devObjectDate,
+        probationaryDate,
+        probationaryFullYearDate,
+        fullMemberDate,
+      }, today);
+      if (futureDateError) return fail(res, 'FUTURE_PARTY_DATE', futureDateError);
+
       const dateOrderError = validatePartyDateOrder({
         applicationDate,
         activistDate,
@@ -1759,7 +1792,6 @@ async function main() {
       const providedStatus = String(req.body?.currentStatus ?? "").trim();
       const currentStatus = providedStatus || partyStageStatus(finalStage);
 
-      const today = toYmd(new Date());
       const hasNextReportDue = Object.prototype.hasOwnProperty.call(req.body || {}, "nextReportDue");
       const hasNextTalkDue = Object.prototype.hasOwnProperty.call(req.body || {}, "nextTalkDue");
       const nextReportDueRaw = hasNextReportDue ? normalizeYmdInput(req.body?.nextReportDue) : undefined;

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
 function pad2(n) { return String(n).padStart(2, '0') }
@@ -48,6 +49,7 @@ function parseIds(text) {
 }
 
 export default function Activity() {
+  const navigate = useNavigate()
   const [isAdmin, setIsAdmin] = useState(false)
   const [isStudent, setIsStudent] = useState(false)
   const [isCadre, setIsCadre] = useState(false)
@@ -300,7 +302,10 @@ export default function Activity() {
 
   return (
     <div className="container">
+      <div className="page-toolbar">
       <h2>班团活动管理</h2>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => navigate('/')}>返回首页</button>
+      </div>
 
       <div className="card">
         <h3>我的活动</h3>

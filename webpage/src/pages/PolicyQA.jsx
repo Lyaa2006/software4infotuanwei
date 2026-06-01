@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
 export default function PolicyQA() {
+  const navigate = useNavigate()
   const [answer, setAnswer] = useState('')
   const [question, setQuestion] = useState('')
 
@@ -91,7 +93,10 @@ export default function PolicyQA() {
 
   return (
     <div className="container">
+      <div className="page-toolbar">
       <h2>智能问答</h2>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => navigate('/')}>返回首页</button>
+      </div>
       <div className="card">
         <input className="input" value={question} onChange={e => setQuestion(e.target.value)} placeholder="输入问题" />
         <div style={{ marginTop: 8 }}>

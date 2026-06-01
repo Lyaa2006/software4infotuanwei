@@ -12,6 +12,14 @@ function normalizeYmd(value) {
   return s
 }
 
+function localTodayYmd() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return y + '-' + m + '-' + day
+}
+
 function validatePartyDateOrder(profile) {
   const pairs = [
     ['入党申请时间', normalizeYmd(profile?.applicationDate)],
@@ -25,6 +33,21 @@ function validatePartyDateOrder(profile) {
     const [prevLabel, prevValue] = pairs[i - 1]
     const [currLabel, currValue] = pairs[i]
     if (prevValue > currValue) return `${currLabel}不能早于${prevLabel}`
+  }
+  return ''
+}
+
+function validateHistoricalDatesNotFuture(profile, todayYmd) {
+  const pairs = [
+    ['入党申请时间', normalizeYmd(profile?.applicationDate)],
+    ['确定为入党积极分子时间', normalizeYmd(profile?.activistDate)],
+    ['确定为发展对象时间', normalizeYmd(profile?.devObjectDate)],
+    ['接收为预备党员时间', normalizeYmd(profile?.probationaryDate)],
+    ['预备期满一年时间', normalizeYmd(profile?.probationaryFullYearDate)],
+    ['转为正式党员时间', normalizeYmd(profile?.fullMemberDate)],
+  ].filter(([, value]) => !!value)
+  for (const [label, value] of pairs) {
+    if (todayYmd && value > todayYmd) return label + '不能设置为未来日期'
   }
   return ''
 }
@@ -80,7 +103,7 @@ export default function PartyAdminEdit() {
   })
 
   useEffect(() => {
-    const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,'0'); const day = String(d.getDate()).padStart(2,'0'); setToday(`${y}-${m}-${day}`)
+    setToday(localTodayYmd())
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId])
@@ -167,6 +190,8 @@ export default function PartyAdminEdit() {
       ['谈话截止日期', profile.nextTalkDue],
     ].find(([, value]) => String(value || '').trim() && !normalizeYmd(value))
     if (invalidPartyDate) return alert(`${invalidPartyDate[0]}格式错误或日期无效，应为真实的 YYYY-MM-DD`)
+    const futureDateError = validateHistoricalDatesNotFuture(profile, today || localTodayYmd())
+    if (futureDateError) return alert(futureDateError)
     const dateOrderError = validatePartyDateOrder(profile)
     if (dateOrderError) return alert(dateOrderError)
     setSaving(true)
@@ -211,11 +236,14 @@ export default function PartyAdminEdit() {
     }
   }
 
-  function onBackToList() { nav(-1) }
+  function onBackToList() { nav('/party/admin/list') }
 
   return (
     <div className="container">
+      <div className="page-toolbar">
       <h2>编辑学生：{accountId}</h2>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => nav("/")}>返回首页</button>
+      </div>
       <div className="card">
         <div style={{ marginBottom: 8 }}>
           <label>姓名: <input value={profile.name} onChange={onNameInput} /></label>
@@ -269,7 +297,7 @@ export default function PartyAdminEdit() {
 
         <div style={{ marginTop: 12 }}>
           <button className="btn" onClick={onSave}>{saving ? '保存中...' : '保存'}</button>
-          <button className="btn" style={{ marginLeft: 8 }} onClick={onBackToList}>返回</button>
+          <button className="btn" style={{ marginLeft: 8 }} type="button" onClick={onBackToList}>返回列表</button>
         </div>
       </div>
     </div>
