@@ -6,7 +6,27 @@ function normalizeYmd(value) {
   const s = String(value ?? '').trim()
   if (!s) return ''
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return ''
+  const [y, m, d] = s.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) return ''
   return s
+}
+
+function validatePartyDateOrder(profile) {
+  const pairs = [
+    ['入党申请时间', normalizeYmd(profile?.applicationDate)],
+    ['确定为入党积极分子时间', normalizeYmd(profile?.activistDate)],
+    ['确定为发展对象时间', normalizeYmd(profile?.devObjectDate)],
+    ['接收为预备党员时间', normalizeYmd(profile?.probationaryDate)],
+    ['预备期满一年时间', normalizeYmd(profile?.probationaryFullYearDate)],
+    ['转为正式党员时间', normalizeYmd(profile?.fullMemberDate)],
+  ].filter(([, value]) => !!value)
+  for (let i = 1; i < pairs.length; i += 1) {
+    const [prevLabel, prevValue] = pairs[i - 1]
+    const [currLabel, currValue] = pairs[i]
+    if (prevValue > currValue) return `${currLabel}不能早于${prevLabel}`
+  }
+  return ''
 }
 
 function stageIndex(stages, value) {
@@ -136,6 +156,19 @@ export default function PartyAdminEdit() {
 
   async function onSave() {
     if (saving) return
+    const invalidPartyDate = [
+      ['入党申请时间', profile.applicationDate],
+      ['确定为入党积极分子时间', profile.activistDate],
+      ['确定为发展对象时间', profile.devObjectDate],
+      ['接收为预备党员时间', profile.probationaryDate],
+      ['预备期满一年时间', profile.probationaryFullYearDate],
+      ['转为正式党员时间', profile.fullMemberDate],
+      ['思想汇报截止日期', profile.nextReportDue],
+      ['谈话截止日期', profile.nextTalkDue],
+    ].find(([, value]) => String(value || '').trim() && !normalizeYmd(value))
+    if (invalidPartyDate) return alert(`${invalidPartyDate[0]}格式错误或日期无效，应为真实的 YYYY-MM-DD`)
+    const dateOrderError = validatePartyDateOrder(profile)
+    if (dateOrderError) return alert(dateOrderError)
     setSaving(true)
     try {
       const payload = {

@@ -7,6 +7,13 @@ function formatYmd(ymd) {
   if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(s)) return ''
   return s
 }
+function isValidYmd(ymd) {
+  const s = formatYmd(ymd)
+  if (!s) return false
+  const [y, m, d] = s.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d
+}
 function formatDateTime(ts) {
   const n = Number(ts || 0)
   if (!n) return ''
@@ -215,7 +222,7 @@ export default function Activity() {
     const title = String(formTitle || '').trim()
     if (!title) return alert('请填写标题')
     const date = String(formDate || '').trim()
-    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return alert('日期格式应为 YYYY-MM-DD')
+    if (date && !isValidYmd(date)) return alert('日期格式错误或日期无效，应为真实的 YYYY-MM-DD')
     setSaving(true)
     try {
       const participants = { organizers: parseIds(formOrganizers), participants: parseIds(formParticipants), helpers: parseIds(formHelpers) }

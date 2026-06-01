@@ -2,7 +2,27 @@ function normalizeYmd(value) {
   const s = String(value ?? "").trim();
   if (!s) return "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+  const [y, m, d] = s.split("-").map((x) => Number(x));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() + 1 !== m || dt.getUTCDate() !== d) return "";
   return s;
+}
+
+function validatePartyDateOrder(profile) {
+  const pairs = [
+    ["入党申请时间", normalizeYmd(profile?.applicationDate)],
+    ["确定为入党积极分子时间", normalizeYmd(profile?.activistDate)],
+    ["确定为发展对象时间", normalizeYmd(profile?.devObjectDate)],
+    ["接收为预备党员时间", normalizeYmd(profile?.probationaryDate)],
+    ["预备期满一年时间", normalizeYmd(profile?.probationaryFullYearDate)],
+    ["转为正式党员时间", normalizeYmd(profile?.fullMemberDate)],
+  ].filter(([, value]) => !!value);
+  for (let i = 1; i < pairs.length; i += 1) {
+    const [prevLabel, prevValue] = pairs[i - 1];
+    const [currLabel, currValue] = pairs[i];
+    if (prevValue > currValue) return `${currLabel}不能早于${prevLabel}`;
+  }
+  return "";
 }
 
 function stageIndex(stages, value) {
@@ -193,6 +213,29 @@ Page({
 
   async onSave() {
     if (this.data.saving) return;
+    const invalidPartyDate = [
+      ["入党申请时间", this.data.profile.applicationDate],
+      ["确定为入党积极分子时间", this.data.profile.activistDate],
+      ["确定为发展对象时间", this.data.profile.devObjectDate],
+      ["接收为预备党员时间", this.data.profile.probationaryDate],
+      ["预备期满一年时间", this.data.profile.probationaryFullYearDate],
+      ["转为正式党员时间", this.data.profile.fullMemberDate],
+      ["思想汇报截止日期", this.data.profile.nextReportDue],
+      ["谈话截止日期", this.data.profile.nextTalkDue],
+    ].find(([, value]) => String(value || "").trim() && !normalizeYmd(value));
+    if (invalidPartyDate) {
+      wx.showModal({
+        title: "保存失败",
+        content: `${invalidPartyDate[0]}格式错误或日期无效，应为真实的 YYYY-MM-DD`,
+        showCancel: false,
+      });
+      return;
+    }
+    const dateOrderError = validatePartyDateOrder(this.data.profile);
+    if (dateOrderError) {
+      wx.showModal({ title: "保存失败", content: dateOrderError, showCancel: false });
+      return;
+    }
     this.setData({ saving: true });
     wx.showLoading({ title: "保存中..." });
     try {

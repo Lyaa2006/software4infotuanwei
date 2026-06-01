@@ -441,7 +441,39 @@ function normalizeYmdInput(value) {
   const s = String(value ?? "").trim();
   if (!s) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, m, d] = s.split("-").map((x) => Number(x));
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (
+    dt.getUTCFullYear() !== y
+    || dt.getUTCMonth() + 1 !== m
+    || dt.getUTCDate() !== d
+  ) return null;
   return s;
+}
+
+function hasInvalidYmdInput(value) {
+  const raw = String(value ?? "").trim();
+  return !!raw && !normalizeYmdInput(raw);
+}
+
+function validatePartyDateOrder(dates) {
+  const pairs = [
+    ["入党申请时间", dates.applicationDate],
+    ["确定为入党积极分子时间", dates.activistDate],
+    ["确定为发展对象时间", dates.devObjectDate],
+    ["接收为预备党员时间", dates.probationaryDate],
+    ["预备期满一年时间", dates.probationaryFullYearDate],
+    ["转为正式党员时间", dates.fullMemberDate],
+  ].filter(([, value]) => !!value);
+  for (let i = 1; i < pairs.length; i += 1) {
+    const [prevLabel, prevValue] = pairs[i - 1];
+    const [currLabel, currValue] = pairs[i];
+    if (prevValue > currValue) {
+      return `${currLabel}不能早于${prevLabel}`;
+    }
+  }
+  return "";
 }
 
 function safeFileBaseName(name) {
@@ -1697,6 +1729,21 @@ async function main() {
       const probationaryDate = normalizeYmdInput(req.body?.probationaryDate);
       const probationaryFullYearDate = normalizeYmdInput(req.body?.probationaryFullYearDate);
       const fullMemberDate = normalizeYmdInput(req.body?.fullMemberDate);
+      if (hasInvalidYmdInput(req.body?.applicationDate)) return fail(res, "INVALID_DATE", "入党申请时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (hasInvalidYmdInput(req.body?.activistDate)) return fail(res, "INVALID_DATE", "确定为入党积极分子时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (hasInvalidYmdInput(req.body?.devObjectDate)) return fail(res, "INVALID_DATE", "确定为发展对象时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (hasInvalidYmdInput(req.body?.probationaryDate)) return fail(res, "INVALID_DATE", "接收为预备党员时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (hasInvalidYmdInput(req.body?.probationaryFullYearDate)) return fail(res, "INVALID_DATE", "预备期满一年时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (hasInvalidYmdInput(req.body?.fullMemberDate)) return fail(res, "INVALID_DATE", "转为正式党员时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      const dateOrderError = validatePartyDateOrder({
+        applicationDate,
+        activistDate,
+        devObjectDate,
+        probationaryDate,
+        probationaryFullYearDate,
+        fullMemberDate,
+      });
+      if (dateOrderError) return fail(res, "INVALID_DATE_ORDER", dateOrderError);
 
       const computedStage = partyStageFromDates({
         activist_date: activistDate,
@@ -2309,6 +2356,7 @@ async function main() {
       const description = String(req.body?.description ?? "").trim();
       const issuer = String(req.body?.issuer ?? "").trim();
       const honorDate = normalizeYmdInput(req.body?.honorDate);
+      if (hasInvalidYmdInput(req.body?.honorDate)) return fail(res, "INVALID_DATE", "荣誉日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const isPublic = req.body?.isPublic === false ? false : true;
       const imagePath = String(req.body?.imagePath ?? "").trim();
 
@@ -2338,6 +2386,7 @@ async function main() {
       const description = String(req.body?.description ?? "").trim();
       const issuer = String(req.body?.issuer ?? "").trim();
       const honorDate = normalizeYmdInput(req.body?.honorDate);
+      if (hasInvalidYmdInput(req.body?.honorDate)) return fail(res, "INVALID_DATE", "荣誉日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const isPublic = req.body?.isPublic === false ? false : true;
       const imagePath = String(req.body?.imagePath ?? "").trim();
 
@@ -2984,6 +3033,7 @@ async function main() {
       if (!title) return fail(res, "EMPTY_TITLE", "请填写活动标题");
       const summary = String(req.body?.summary ?? "").trim();
       const activityDate = normalizeYmdInput(req.body?.activityDate);
+      if (hasInvalidYmdInput(req.body?.activityDate)) return fail(res, "INVALID_DATE", "活动日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const targetTag = String(req.body?.targetTag ?? "").trim();
       const photoPaths = normalizeStringArray(req.body?.photoPaths);
       const participantsRaw = req.body?.participants || {};
@@ -3093,6 +3143,7 @@ async function main() {
       if (!title) return fail(res, "EMPTY_TITLE", "请填写活动标题");
       const summary = String(req.body?.summary ?? "").trim();
       const activityDate = normalizeYmdInput(req.body?.activityDate);
+      if (hasInvalidYmdInput(req.body?.activityDate)) return fail(res, "INVALID_DATE", "活动日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const targetTag = String(req.body?.targetTag ?? "").trim();
       const photoPaths = normalizeStringArray(req.body?.photoPaths);
       const participantsRaw = req.body?.participants || {};
