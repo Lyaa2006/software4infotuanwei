@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
 function pad2(n) { return String(n).padStart(2, '0') }
@@ -30,6 +31,7 @@ function parseSemesterCoursesCsv(text) {
 }
 
 export default function Academic() {
+  const featureDisabled = true
   const [isAdmin, setIsAdmin] = useState(false)
   const [isStudent, setIsStudent] = useState(false)
   const [semester, setSemester] = useState(defaultSemesterFromNow())
@@ -56,8 +58,15 @@ export default function Academic() {
   const [semesterCoursesCsv, setSemesterCoursesCsv] = useState('')
   const [semesterCoursesLoadedCount, setSemesterCoursesLoadedCount] = useState(0)
   const [savingSemesterCourses, setSavingSemesterCourses] = useState(false)
+  const nav = useNavigate()
 
   useEffect(() => {
+    if (!featureDisabled) return
+    alert('开发中，敬请期待')
+  }, [])
+
+  useEffect(() => {
+    if (featureDisabled) return
     const s = api.auth.getSession()
     const role = s?.role
     setIsAdmin(role === 'admin')
@@ -108,6 +117,12 @@ export default function Academic() {
   async function onChooseTranscript(e) {
     const file = (e.target.files || [])[0]
     if (!file) return
+    const uploadDisabled = true
+    if (uploadDisabled) {
+      alert('开发中，敬请期待')
+      e.target.value = ''
+      return
+    }
     if (uploading) return
     setUploading(true)
     try {
@@ -201,6 +216,16 @@ export default function Academic() {
     if (!items.length) { alert('课程列表为空'); return }
     setSavingSemesterCourses(true)
     try { await api.featureApi.academicAdminSemesterCoursesSave({ semester: sem, items }); alert('已保存'); setAdminSemester(sem); await onLoadSemesterCourses() } catch (e) { alert(e?.message || '保存失败') } finally { setSavingSemesterCourses(false) }
+  }
+
+  if (featureDisabled) {
+    return (
+      <div className="container">
+        <h2>学业情况分析</h2>
+        <p className="empty-state">开发中，敬请期待</p>
+        <button className="btn" onClick={() => nav('/')}>返回首页</button>
+      </div>
+    )
   }
 
   return (

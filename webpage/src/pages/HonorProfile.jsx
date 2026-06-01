@@ -5,6 +5,7 @@ import api from '../services/api'
 export default function HonorProfile() {
   const { accountId } = useParams()
   const [items, setItems] = useState([])
+  const [userTitle, setUserTitle] = useState('')
   const [uploading, setUploading] = useState(false)
   const [isEditable, setIsEditable] = useState(false)
   const [editingId, setEditingId] = useState('')
@@ -25,6 +26,9 @@ export default function HonorProfile() {
       const baseUrl = api.getBaseUrl() || ''
       const mapped = (r.items || []).map(x => ({ ...x, imageUrl: x.imagePath ? `${baseUrl}${x.imagePath}` : '' }))
       setItems(mapped)
+      const user = r.user || {}
+      const nameText = String(user.name || '').trim() ? String(user.name || '').trim() : String(user.accountId || accountId || '')
+      setUserTitle(nameText ? `${nameText} 的荣誉主页` : '')
       const session = api.auth.getSession()
       setIsEditable(session?.role === 'student' && String(session?.accountId) === String(accountId))
     } catch (e) {}
@@ -33,6 +37,12 @@ export default function HonorProfile() {
   async function onUploadImage(e) {
     const file = (e.target.files || [])[0]
     if (!file) return
+    const uploadDisabled = true
+    if (uploadDisabled) {
+      alert('开发中，敬请期待')
+      e.target.value = ''
+      return
+    }
     if (uploading) return
     setUploading(true)
     try {
@@ -118,7 +128,7 @@ export default function HonorProfile() {
 
   return (
     <div className="container">
-      <h2>荣誉：{accountId}</h2>
+      <h2>{userTitle || `荣誉：${accountId}`}</h2>
       <div className="card">
         {isEditable && (
           <div style={{ marginBottom: 12 }}>
@@ -143,6 +153,7 @@ export default function HonorProfile() {
         )}
 
         <h3>荣誉列表</h3>
+        {!items.length && <p className="empty-state">暂无公开荣誉。</p>}
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {items.map(i => (
             <li key={i._id || i.id} style={{ padding: 10, borderBottom: '1px solid #f0f0f0' }}>

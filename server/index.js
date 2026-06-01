@@ -18,7 +18,7 @@ const DB_PASSWORD = String(process.env.DB_PASSWORD || "123456");
 const DB_NAME = String(process.env.DB_NAME || "student_service_platform");
 
 const PARTY_STAGES = [
-  { value: "group_assessment", label: "通过党课学习小组考核", status: "党课学习小组考核中" },
+  { value: "group_assessment", label: "党课学习小组学习", status: "党课学习小组学习中" },
   { value: "activist", label: "入党积极分子", status: "入党积极分子培养中" },
   { value: "dev_object", label: "发展对象（通过院党校推优）", status: "校党校学习中" },
   { value: "probationary", label: "预备党员", status: "预备党员培养中" },
