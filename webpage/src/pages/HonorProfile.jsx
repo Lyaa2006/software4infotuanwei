@@ -2,6 +2,15 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import api from '../services/api'
 
+function isValidYmd(value) {
+  const s = String(value ?? '').trim()
+  if (!s) return false
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false
+  const [y, m, d] = s.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d
+}
+
 export default function HonorProfile() {
   const { accountId } = useParams()
   const [items, setItems] = useState([])
@@ -24,7 +33,7 @@ export default function HonorProfile() {
     try {
       const r = await api.featureApi.honorUserDetail({ accountId })
       const baseUrl = api.getBaseUrl() || ''
-      const mapped = (r.items || []).map(x => ({ ...x, imageUrl: x.imagePath ? `${baseUrl}${x.imagePath}` : '' }))
+      const mapped = (r.items || []).map((x) => ({ ...x, imageUrl: x.imagePath ? `${baseUrl}${x.imagePath}` : '' }))
       setItems(mapped)
       const user = r.user || {}
       const nameText = String(user.name || '').trim() ? String(user.name || '').trim() : String(user.accountId || accountId || '')
@@ -39,7 +48,7 @@ export default function HonorProfile() {
     if (!file) return
     const uploadDisabled = true
     if (uploadDisabled) {
-      alert('开发中，敬请期待')
+      alert('图片上传功能暂未开放')
       e.target.value = ''
       return
     }
@@ -51,7 +60,7 @@ export default function HonorProfile() {
       const session = api.auth.getSession()
       const url = `${api.getBaseUrl() || ''}/api/honor/me/upload`
       const opts = { method: 'POST', headers: {}, body: fd }
-      if (session?.token) opts.headers['Authorization'] = `Bearer ${session.token}`
+      if (session?.token) opts.headers.Authorization = `Bearer ${session.token}`
       const res = await fetch(url, opts)
       const text = await res.text()
       const obj = JSON.parse(text)
@@ -100,30 +109,47 @@ export default function HonorProfile() {
       alert('已删除')
       if (String(editingId) === String(item._id)) onResetForm()
       await load()
-    } catch (e) { alert(e?.message || '删除失败') }
+    } catch (e) {
+      alert(e?.message || '删除失败')
+    }
   }
 
   async function onSave() {
     if (saving) return
     const title = String(formTitle || '').trim()
     if (!title) return alert('请填写荣誉名称')
-    // validate honorDate format if provided
-    if (formHonorDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(formHonorDate))) return alert('日期格式应为 YYYY-MM-DD')
+    if (formHonorDate && !isValidYmd(formHonorDate)) return alert('日期格式错误或日期无效，应为真实的 YYYY-MM-DD')
     setSaving(true)
     try {
       if (editingId) {
-        await api.featureApi.honorMyUpdate({ id: editingId, title, description: formDescription, issuer: formIssuer, honorDate: formHonorDate, imagePath: formImagePath, isPublic: formIsPublic })
+        await api.featureApi.honorMyUpdate({
+          id: editingId,
+          title,
+          description: formDescription,
+          issuer: formIssuer,
+          honorDate: formHonorDate,
+          imagePath: formImagePath,
+          isPublic: formIsPublic,
+        })
       } else {
-        await api.featureApi.honorMyCreate({ title, description: formDescription, issuer: formIssuer, honorDate: formHonorDate, imagePath: formImagePath, isPublic: formIsPublic })
+        await api.featureApi.honorMyCreate({
+          title,
+          description: formDescription,
+          issuer: formIssuer,
+          honorDate: formHonorDate,
+          imagePath: formImagePath,
+          isPublic: formIsPublic,
+        })
       }
       alert('已保存')
       onResetForm()
       await load()
     } catch (err) {
-      // prefer detailed server body when available
       const body = err?.body || ''
       alert((err?.message || '保存失败') + (body ? `\n服务器返回：${body}` : ''))
-    } finally { setSaving(false) }
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -134,14 +160,14 @@ export default function HonorProfile() {
           <div style={{ marginBottom: 12 }}>
             <h3>我的主页管理</h3>
             <div style={{ marginBottom: 8 }}>
-              <input className="input" placeholder="荣誉名称" value={formTitle} onChange={e => setFormTitle(e.target.value)} />
+              <input className="input" placeholder="荣誉名称" value={formTitle} onChange={(e) => setFormTitle(e.target.value)} />
             </div>
             <div style={{ marginBottom: 8 }}>
-              <textarea className="input" placeholder="描述" value={formDescription} onChange={e => setFormDescription(e.target.value)} />
+              <textarea className="input" placeholder="描述" value={formDescription} onChange={(e) => setFormDescription(e.target.value)} />
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input className="input" placeholder="颁发单位" value={formIssuer} onChange={e => setFormIssuer(e.target.value)} />
-              <input className="input" placeholder="荣誉日期 YYYY-MM-DD" value={formHonorDate} onChange={e => setFormHonorDate(e.target.value)} />
+              <input className="input" placeholder="颁发单位" value={formIssuer} onChange={(e) => setFormIssuer(e.target.value)} />
+              <input className="input" placeholder="荣誉日期 YYYY-MM-DD" value={formHonorDate} onChange={(e) => setFormHonorDate(e.target.value)} />
             </div>
             <div style={{ marginTop: 8 }}>
               <label className="btn">上传荣誉图片<input type="file" style={{ display: 'none' }} onChange={onUploadImage} /></label>
@@ -155,7 +181,7 @@ export default function HonorProfile() {
         <h3>荣誉列表</h3>
         {!items.length && <p className="empty-state">暂无公开荣誉。</p>}
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {items.map(i => (
+          {items.map((i) => (
             <li key={i._id || i.id} style={{ padding: 10, borderBottom: '1px solid #f0f0f0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <div>
@@ -163,7 +189,7 @@ export default function HonorProfile() {
                   <div style={{ color: '#6b7280' }}>{i.honorDate || i.honorDateText}</div>
                 </div>
                 <div>
-                  {i.imageUrl && <img src={i.imageUrl} alt="i" style={{ maxWidth: 120, marginLeft: 12 }} />}
+                  {i.imageUrl && <img src={i.imageUrl} alt="honor" style={{ maxWidth: 120, marginLeft: 12 }} />}
                 </div>
               </div>
               <div style={{ marginTop: 8 }}>{i.description}</div>

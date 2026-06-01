@@ -8,6 +8,14 @@ function formatDate(ymd) {
   return s;
 }
 
+function isValidYmd(ymd) {
+  const s = formatDate(ymd);
+  if (!s) return false;
+  const [y, m, d] = s.split("-").map((x) => Number(x));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d;
+}
+
 function formatDateTime(ts) {
   const n = Number(ts || 0);
   if (!n) return "";
@@ -262,8 +270,8 @@ Page({
       return;
     }
     const honorDate = String(this.data.formHonorDate || "").trim();
-    if (honorDate && !/^\d{4}-\d{2}-\d{2}$/.test(honorDate)) {
-      wx.showToast({ title: "日期格式应为 YYYY-MM-DD", icon: "none" });
+    if (honorDate && !isValidYmd(honorDate)) {
+      wx.showToast({ title: "日期无效", icon: "none" });
       return;
     }
     this.setData({ saving: true });
@@ -307,4 +315,3 @@ Page({
     wx.previewImage({ urls: [url] });
   },
 });
-
