@@ -1,12 +1,20 @@
 const STORAGE_KEY = 'mp_web_session'
 
+function normalizeApiBaseUrl(input) {
+  let base = String(input || '').trim()
+  if (!base) return ''
+  base = base.replace(/\/+$/, '')
+  if (/\/api$/i.test(base)) base = base.replace(/\/api$/i, '')
+  return base.replace(/\/+$/, '')
+}
+
 function getBaseUrl() {
   // In development use relative paths so Vite dev-server proxy (configured for '/api') will forward requests
   // to the backend and avoid CORS issues. In production use VITE_API_BASE or default to http://localhost:3001
   if (import.meta.env && import.meta.env.DEV) {
     return ''
   }
-  return (import.meta.env.VITE_API_BASE || 'http://localhost:3001')
+  return normalizeApiBaseUrl(import.meta.env.VITE_API_BASE || '')
 }
 
 function getSession() {
