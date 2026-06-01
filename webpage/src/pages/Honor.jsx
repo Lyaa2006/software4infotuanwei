@@ -34,7 +34,10 @@ export default function Honor() {
 
   return (
     <div className="container">
+      <div className="page-toolbar">
       <h2>荣誉</h2>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => nav('/')}>返回首页</button>
+      </div>
       <div style={{ marginBottom: 12 }}>
         <button className="btn" onClick={goMyProfile}>我的主页</button>
         <button className="btn" style={{ marginLeft: 8 }} onClick={loadUsers}>{loading ? '加载中...' : '刷新公开主页'}</button>

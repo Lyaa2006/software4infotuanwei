@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
 function pad2(n) { return String(n).padStart(2, '0') }
@@ -21,7 +22,39 @@ function buildPreview(content) {
   return s.length > 80 ? `${s.slice(0, 80)}...` : s
 }
 
+function normalizeTagList(value) {
+  const raw = Array.isArray(value) ? value : String(value ?? "").split(/[,，\n\r\t ]+/)
+  const out = []
+  const seen = new Set()
+  for (const item of raw) {
+    const tag = String(item ?? "").trim()
+    if (!tag || tag === '-') continue
+    if (seen.has(tag)) continue
+    seen.add(tag)
+    out.push(tag)
+  }
+  return out
+}
+
+function formatStudentTags(tags) {
+  return tags.length ? "标签：" + tags.join('、') : '标签：-'
+}
+
+function mapAdminStudentForTags(student) {
+  const tags = normalizeTagList(student?.tags)
+  return { ...student, tags, tagsText: formatStudentTags(tags), tagsTextRaw: tags.join(',') }
+}
+
+function buildAvailableTagsText(students) {
+  const tagSet = new Set()
+  for (const student of students || []) {
+    for (const tag of normalizeTagList(student?.tags)) tagSet.add(tag)
+  }
+  return Array.from(tagSet).slice(0, 30).join('、')
+}
+
 export default function Reminder() {
+  const navigate = useNavigate()
   const [items, setItems] = useState([])
   const [isAdmin, setIsAdmin] = useState(false)
 
@@ -38,6 +71,7 @@ export default function Reminder() {
   // edit tags
   const [editingAccountId, setEditingAccountId] = useState('')
   const [editingNameText, setEditingNameText] = useState('')
+  const [editingStudentName, setEditingStudentName] = useState('')
   const [editingTagsText, setEditingTagsText] = useState('')
   const [savingTags, setSavingTags] = useState(false)
 
@@ -79,10 +113,9 @@ export default function Reminder() {
     try {
       const r = await api.featureApi.reminderAdminStudents()
       const list = Array.isArray(r.items) ? r.items : []
-      const mapped = list.map(x => { const tags = Array.isArray(x.tags) ? x.tags : []; return { ...x, tagsText: tags.length?`标签：${tags.join('、')}`:'标签：-', tagsTextRaw: tags.join(',') } })
-      const tagSet = new Set(); for (const s of mapped) { const tags = Array.isArray(s.tags) ? s.tags : []; for (const t of tags) tagSet.add(String(t)) }
+      const mapped = list.map(mapAdminStudentForTags)
       setAdminStudents(mapped)
-      setAvailableTagsText(Array.from(tagSet).slice(0,30).join('、'))
+      setAvailableTagsText(buildAvailableTagsText(mapped))
     } catch (e) {}
   }
 
@@ -134,27 +167,50 @@ export default function Reminder() {
     } catch (e) { alert(e?.message || '发送失败') } finally { setSending(false) }
   }
 
-  function onEditTags(accountId, name, tagsText) { setEditingAccountId(accountId); setEditingNameText(name?`${accountId}（${name}）`:accountId); setEditingTagsText(tagsText) }
+  function onEditTags(student) {
+    const accountId = String(student?.accountId || '').trim()
+    if (!accountId) return
+    const name = String(student?.name || '').trim()
+    const tags = normalizeTagList(student?.tags)
+    setEditingAccountId(accountId)
+    setEditingStudentName(name)
+    setEditingNameText(name ? accountId + '（' + name + '）' : accountId)
+    setEditingTagsText(tags.join(', '))
+  }
 
-  function onCancelEditTags() { setEditingAccountId(''); setEditingNameText(''); setEditingTagsText('') }
+  function onCancelEditTags() { setEditingAccountId(''); setEditingNameText(''); setEditingStudentName(''); setEditingTagsText('') }
 
   async function onSaveEditTags() {
     if (savingTags) return
-    const accountId = String(editingAccountId || '')
+    const accountId = String(editingAccountId || '').trim()
     if (!accountId) return
     setSavingTags(true)
     try {
       const tags = parseTagsText(editingTagsText)
       await api.featureApi.reminderAdminStudentTagsSave({ accountId, tags })
+      const nextStudents = (adminStudents || []).map(student => {
+        if (String(student.accountId) !== accountId) return student
+        return mapAdminStudentForTags({ ...student, tags })
+      })
+      setAdminStudents(nextStudents)
+      setAvailableTagsText(buildAvailableTagsText(nextStudents))
       alert('已保存')
       onCancelEditTags()
       await loadAdminStudents()
-    } catch (e) { alert(e?.message || '保存失败') } finally { setSavingTags(false) }
+    } catch (e) {
+      alert(e?.message || '保存失败')
+    } finally {
+      setSavingTags(false)
+    }
   }
+
 
   return (
     <div className="container">
+      <div className="page-toolbar">
       <h2>提醒</h2>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => navigate('/')}>返回首页</button>
+      </div>
       <div className="card">
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {items.map(i => (
@@ -206,19 +262,30 @@ export default function Reminder() {
               <li key={s.accountId} style={{ padding: 8, borderBottom: '1px solid #f5f5f5' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>{s.accountId} {s.name ? `(${s.name})` : ''} <small style={{ color: '#666', marginLeft: 8 }}>{s.tagsText}</small></div>
-                  <div><button className="btn" onClick={()=>onEditTags(s.accountId, s.name, s.tagsTextRaw)}>编辑标签</button></div>
+                  <div><button className="btn" type="button" onClick={() => onEditTags(s)}>编辑标签</button></div>
                 </div>
               </li>
             ))}
           </ul>
         </div>
 
-        {editingAccountId ? <div style={{ marginTop: 12, padding: 8, border: '1px solid #eee' }}>
-          <div>编辑学生标签：{editingNameText}</div>
-          <div style={{ marginTop: 8 }}><input style={{ width: '100%' }} value={editingTagsText} onChange={e=>setEditingTagsText(e.target.value)} placeholder='用逗号或换行分隔' /></div>
-          <div style={{ marginTop: 8 }}>
-            <button className="btn" onClick={onSaveEditTags}>{savingTags ? '保存中...' : '保存'}</button>
-            <button className="btn" style={{ marginLeft: 8 }} onClick={onCancelEditTags}>取消</button>
+        {editingAccountId ? <div className='tag-edit-backdrop' role='dialog' aria-modal='true' aria-labelledby='tag-edit-title' onClick={onCancelEditTags}>
+          <div className='tag-edit-dialog' onClick={e => e.stopPropagation()}>
+            <h3 id='tag-edit-title'>编辑学生标签</h3>
+            <div className='tag-edit-meta'>
+              <div>学号：{editingAccountId}</div>
+              <div>姓名：{editingStudentName || '-'}</div>
+              <div>当前：{editingNameText}</div>
+            </div>
+            <div className='tag-chip-list'>
+              {parseTagsText(editingTagsText).length ? parseTagsText(editingTagsText).map(tag => <span className='tag-chip' key={tag}>{tag}</span>) : <span className='tag-chip muted'>当前无标签</span>}
+            </div>
+            <textarea rows={4} value={editingTagsText} onChange={e => setEditingTagsText(e.target.value)} placeholder='输入标签，支持逗号、空格或换行分隔；清空后保存表示无标签' />
+            <p className='section-note' style={{ marginTop: 8 }}>支持多个标签；重复标签会自动合并。</p>
+            <div className='tag-edit-actions'>
+              <button className='btn' type='button' onClick={onSaveEditTags} disabled={savingTags}>{savingTags ? '保存中...' : '保存'}</button>
+              <button className='btn btn-secondary' type='button' onClick={onCancelEditTags} disabled={savingTags}>取消</button>
+            </div>
           </div>
         </div> : null}
       </div>}

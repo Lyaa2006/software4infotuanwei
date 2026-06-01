@@ -91,6 +91,81 @@ a {
   box-shadow: var(--shadow-soft);
 }
 
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.page-toolbar h1,
+.page-toolbar h2 {
+  margin: 0;
+}
+
+.back-home-btn {
+  flex-shrink: 0;
+}
+
+.tag-edit-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.42);
+  padding: 20px;
+}
+
+.tag-edit-dialog {
+  width: min(560px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: var(--shadow);
+  padding: 22px;
+}
+
+.tag-edit-dialog h3 {
+  margin: 0;
+  color: var(--text-strong);
+}
+
+.tag-edit-meta {
+  margin-top: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.tag-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.tag-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
 .section-card + .section-card,
 .card + .card {
   margin-top: 18px;
@@ -388,7 +463,8 @@ textarea:focus {
   }
 
   .page-header,
-  .section-heading {
+  .section-heading,
+  .page-toolbar {
     flex-direction: column;
     align-items: stretch;
   }
@@ -416,5 +492,9 @@ textarea:focus {
 
   .btn {
     width: 100%;
+  }
+
+  .tag-edit-actions {
+    flex-direction: column;
   }
 }

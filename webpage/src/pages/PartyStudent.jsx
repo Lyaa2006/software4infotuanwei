@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
 function ymdToCn(ymd) {
@@ -59,6 +60,7 @@ function nodeDetail(node, profile) {
 }
 
 export default function PartyStudent() {
+  const navigate = useNavigate()
   const [profile, setProfile] = useState(null)
   const [nodes, setNodes] = useState([])
   const [topHead, setTopHead] = useState('')
@@ -89,7 +91,10 @@ export default function PartyStudent() {
 
   return (
     <div className="container">
+      <div className="page-toolbar">
       <h2>党团进度</h2>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => navigate('/')}>返回首页</button>
+      </div>
       <div className="card">
         <p>{topHead}</p>
         {topExtras.map((x, i) => <p key={i} style={{ color: '#6b7280' }}>{x}</p>)}
