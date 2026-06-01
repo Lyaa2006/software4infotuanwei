@@ -12,6 +12,7 @@ import PartyAdminList from './pages/PartyAdminList'
 import PartyAdminEdit from './pages/PartyAdminEdit'
 import PolicyQA from './pages/PolicyQA'
 import Reminder from './pages/Reminder'
+import TagManagement from './pages/TagManagement'
 import { getSession } from './services/api'
 
 function RequireAuth({ children }) {
@@ -42,6 +43,7 @@ export default function App() {
       <Route path="/party/admin/edit/:accountId" element={<RequireAuth><PartyAdminEdit /></RequireAuth>} />
       <Route path="/policy-qa" element={<RequireAuth><PolicyQA /></RequireAuth>} />
       <Route path="/reminder" element={<RequireAuth><Reminder /></RequireAuth>} />
+      <Route path="/tag-management" element={<RequireAuth><TagManagement /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
