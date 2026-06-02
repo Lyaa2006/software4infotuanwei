@@ -234,6 +234,10 @@ Page({
               url,
               filePath: file.path,
               name: "file",
+              formData: {
+                originalName: String(file.name || ""),
+                originalMime: String(file.type || ""),
+              },
               header: buildAuthHeader(session),
               success: (resp) => resolve(resp),
               fail: (err) => resolve({ err }),
@@ -297,7 +301,11 @@ Page({
               url,
               filePath: file.path,
               name: "file",
-              formData: { name },
+              formData: {
+                name,
+                originalName: String(file.name || ""),
+                originalMime: String(file.type || ""),
+              },
               header: buildAuthHeader(session),
               success: (resp) => resolve(resp),
               fail: (err) => resolve({ err }),

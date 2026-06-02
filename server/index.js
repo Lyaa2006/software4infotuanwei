@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const express = require("express");
 const fs = require("fs");
 const path = require("path");
-const { Pool } = require("pg");
+const { Pool, types } = require("pg");
 
 
 const PORT = Number(process.env.PORT || 3001);
@@ -16,6 +16,9 @@ const DB_PORT = Number(process.env.DB_PORT || 54321);
 const DB_USER = String(process.env.DB_USER || "system");
 const DB_PASSWORD = String(process.env.DB_PASSWORD || "123456");
 const DB_NAME = String(process.env.DB_NAME || "student_service_platform");
+
+const PG_DATE_OID = 1082;
+types.setTypeParser(PG_DATE_OID, (value) => String(value ?? ""));
 
 const PARTY_STAGES = [
   { value: "group_assessment", label: "通过党课学习小组考核", status: "党课学习小组考核中" },
@@ -856,10 +859,18 @@ function parseTranscriptFromHtml(html) {
   return out;
 }
 
+function bufferStartsWith(buffer, signature) {
+  if (!Buffer.isBuffer(buffer)) return false;
+  const text = String(signature ?? "");
+  if (!text || buffer.length < text.length) return false;
+  return buffer.subarray(0, text.length).toString("latin1") === text;
+}
+
 async function parseTranscriptFile({ filename, mime, buffer }) {
   const name = String(filename ?? "");
   const ext = path.extname(name).toLowerCase();
   const type = String(mime ?? "").toLowerCase();
+  const isPdfFile = ext === ".pdf" || type.includes("pdf") || bufferStartsWith(buffer, "%PDF-");
 
   if (ext === ".csv" || type.includes("csv")) {
     return { format: "csv", courses: parseTranscriptFromCsvText(buffer.toString("utf8")) };
@@ -870,7 +881,7 @@ async function parseTranscriptFile({ filename, mime, buffer }) {
   if (ext === ".html" || ext === ".htm" || type.includes("text/html")) {
     return { format: "html", courses: parseTranscriptFromHtml(buffer.toString("utf8")) };
   }
-  if (ext === ".pdf" || type.includes("pdf")) {
+  if (isPdfFile) {
     let PDFParse;
     try {
       ({ PDFParse } = require("pdf-parse"));
@@ -2576,7 +2587,14 @@ async function main() {
       let gotFile = false;
       let originalName = "";
       let mime = "";
+      let originalNameField = "";
+      let originalMimeField = "";
       const chunks = [];
+
+      busboy.on("field", (fieldname, val) => {
+        if (fieldname === "originalName") originalNameField = String(val ?? "").trim();
+        if (fieldname === "originalMime") originalMimeField = String(val ?? "").trim();
+      });
 
       busboy.on("file", (fieldname, file, info) => {
         gotFile = true;
@@ -2594,7 +2612,11 @@ async function main() {
 
         let parsed;
         try {
-          parsed = await parseTranscriptFile({ filename: originalName, mime, buffer: buf });
+          parsed = await parseTranscriptFile({
+            filename: originalNameField || originalName,
+            mime: originalMimeField || mime,
+            buffer: buf,
+          });
         } catch (e2) {
           const msg = String(e2?.message || "");
           return fail(res, String(e2?.code || "PARSE_FAILED"), msg || "成绩单解析失败", 400);
@@ -2684,10 +2706,14 @@ async function main() {
       let gotFile = false;
       let originalName = "";
       let mime = "";
+      let originalNameField = "";
+      let originalMimeField = "";
       const chunks = [];
 
       busboy.on("field", (fieldname, val) => {
         if (fieldname === "name") planName = String(val ?? "").trim();
+        if (fieldname === "originalName") originalNameField = String(val ?? "").trim();
+        if (fieldname === "originalMime") originalMimeField = String(val ?? "").trim();
       });
 
       busboy.on("file", (fieldname, file, info) => {
@@ -2705,7 +2731,11 @@ async function main() {
 
         let parsed;
         try {
-          parsed = await parseTrainingPlanFile({ filename: originalName, mime, buffer: buf });
+          parsed = await parseTrainingPlanFile({
+            filename: originalNameField || originalName,
+            mime: originalMimeField || mime,
+            buffer: buf,
+          });
         } catch (e2) {
           return fail(res, String(e2?.code || "PARSE_FAILED"), String(e2?.message || "导入失败"), 400);
         }

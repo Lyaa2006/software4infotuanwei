@@ -3,7 +3,7 @@ const STORAGE_KEYS = {
   apiBaseUrl: "api_base_url_v1",
 };
 
-const DEFAULT_BASE_URL = "http://127.0.0.1:54321";
+const DEFAULT_BASE_URL = "http://10.10.0.5:3001";
 
 function getBaseUrl() {
   const app = typeof getApp === "function" ? getApp() : null;
