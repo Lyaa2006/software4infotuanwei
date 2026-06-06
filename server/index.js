@@ -1076,6 +1076,98 @@ function buildTranscriptParseSummary({ sourceFormat, courses }) {
   };
 }
 
+function ensurePdfParseRuntimeCompat() {
+  if (typeof process.getBuiltinModule !== "function") {
+    try {
+      Object.defineProperty(process, "getBuiltinModule", {
+        value: require,
+        configurable: true,
+        writable: true,
+      });
+    } catch {
+      process.getBuiltinModule = require;
+    }
+  }
+
+  if (typeof globalThis.DOMMatrix === "undefined") {
+    try {
+      globalThis.DOMMatrix = require("dommatrix");
+    } catch {
+      // pdfjs-dist will raise a clearer load error below if this dependency is unavailable.
+    }
+  }
+}
+
+function normalizeCourseSearchText(value) {
+  const raw = String(value ?? "");
+  const normalized = typeof raw.normalize === "function" ? raw.normalize("NFKC") : raw;
+  return normalized.replace(/\u3000/g, " ").toLowerCase();
+}
+
+function compactCourseSearchText(value) {
+  return normalizeCourseSearchText(value).replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function buildPdfCourseSearchIndex(text) {
+  const lower = normalizeCourseSearchText(text).replace(/\s+/g, " ").trim();
+  return {
+    lower,
+    compact: compactCourseSearchText(text),
+  };
+}
+
+function isCourseTokenInPdfText(searchIndex, value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return false;
+  const lower = normalizeCourseSearchText(raw).replace(/\s+/g, " ").trim();
+  const compact = compactCourseSearchText(raw);
+  if (compact.length < 2) return false;
+  if (lower.length >= 2 && searchIndex.lower.includes(lower)) return true;
+  return searchIndex.compact.includes(compact);
+}
+
+function extractPlanCoursesForPdfMatch(plan) {
+  const modules = Array.isArray(plan?.modules) ? plan.modules : [];
+  const seen = new Set();
+  const out = [];
+
+  for (const mod of modules) {
+    const courses = Array.isArray(mod?.courses) ? mod.courses : [];
+    for (const c of courses) {
+      const code = normalizeCourseCode(c?.code);
+      const name = normalizeCourseName(c?.name);
+      const credits = Number(c?.credits || 0);
+      if (!code && !name) continue;
+      const key = [code, name].join("::");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ code, name, credits });
+    }
+  }
+
+  return out;
+}
+
+function matchTranscriptCoursesFromPlanPdfText({ plan, text }) {
+  const searchIndex = buildPdfCourseSearchIndex(text);
+  const matched = [];
+
+  for (const course of extractPlanCoursesForPdfMatch(plan)) {
+    const foundByName = course.name && isCourseTokenInPdfText(searchIndex, course.name);
+    const foundByCode = course.code && isCourseTokenInPdfText(searchIndex, course.code);
+    if (!foundByName && !foundByCode) continue;
+
+    matched.push(buildTranscriptCourse({
+      code: course.code,
+      name: course.name,
+      credits: course.credits,
+      grade: "通过",
+    }));
+  }
+
+  return dedupeTranscriptCourses(matched);
+}
+
 function extractHtmlTableRows(html) {
   const raw = String(html ?? "");
   const cleaned = raw
@@ -1150,21 +1242,53 @@ async function parseTranscriptFile({ filename, mime, buffer }) {
   if (ext === ".pdf" || type.includes("pdf")) {
     let PDFParse;
     try {
+      ensurePdfParseRuntimeCompat();
       ({ PDFParse } = require("pdf-parse"));
     } catch {
-      const err = new Error("暂不支持PDF解析，请导出HTML或CSV成绩单后再上传");
+      const err = new Error("PDF解析依赖加载失败，请在 server 目录执行 npm install，或将 Node.js 升级到 20.16+/22.3+");
       err.code = "PDF_PARSE_UNSUPPORTED";
       throw err;
     }
-    const parser = new PDFParse({ data: buffer });
-    const parsed = await parser.getText();
-    await parser.destroy().catch(() => {});
-    const text = String(parsed?.text ?? "");
-    return { format: "pdf", courses: parseTranscriptFromPdfText(text) };
+    let parser;
+    try {
+      parser = new PDFParse({ data: buffer });
+      const parsed = await parser.getText();
+      const text = String(parsed?.text ?? "");
+      return { format: "pdf", courses: parseTranscriptFromPdfText(text), text };
+    } catch (e) {
+      const err = new Error("PDF解析失败：" + String(e?.message || "无法读取文本"));
+      err.code = "PDF_PARSE_FAILED";
+      throw err;
+    } finally {
+      if (parser) await parser.destroy().catch(() => {});
+    }
   }
   const err = new Error("不支持的文件类型：请上传 HTML / CSV / TXT / PDF");
   err.code = "UNSUPPORTED_FILE";
   throw err;
+}
+
+function normalizeHeaderCell(value) {
+  return String(value ?? "").replace(/\s+/g, "").toLowerCase();
+}
+
+function findHeaderIndex(header, exactLabels, fallbackPattern) {
+  const list = Array.isArray(header) ? header : [];
+  const normalizedLabels = (Array.isArray(exactLabels) ? exactLabels : []).map((label) => normalizeHeaderCell(label));
+  const exactIdx = list.findIndex((item) => normalizedLabels.includes(normalizeHeaderCell(item)));
+  if (exactIdx >= 0) return exactIdx;
+  if (fallbackPattern) return list.findIndex((item) => fallbackPattern.test(String(item ?? "")));
+  return -1;
+}
+
+function getTrainingPlanHeaderIndexes(header) {
+  return {
+    idxModule: findHeaderIndex(header, ["模块名称", "模块", "课程类别", "module"], /模块名称|课程类别|^模块$|module/i),
+    idxReq: findHeaderIndex(header, ["模块学分", "要求学分", "required credits", "required"], /模块学分|要求学分|required/i),
+    idxCode: findHeaderIndex(header, ["课程代码", "代码", "course code"], /课程代码|代码|course\s*code/i),
+    idxName: findHeaderIndex(header, ["课程名称", "课程名", "course name"], /课程名称|课程名|course\s*name/i),
+    idxCredits: findHeaderIndex(header, ["学分", "credit", "credits"], /^学分$|^credits?$/i),
+  };
 }
 
 function parseTrainingPlanFromCsvText(text) {
@@ -1176,11 +1300,7 @@ function parseTrainingPlanFromCsvText(text) {
   if (!lines.length) return [];
 
   const header = splitCsvLine(lines[0]);
-  const idxModule = header.findIndex((h) => /模块|模块名称|module/i.test(h));
-  const idxReq = header.findIndex((h) => /模块学分|要求学分|required/i.test(h));
-  const idxCode = header.findIndex((h) => /代码|课程代码|course\s*code/i.test(h));
-  const idxName = header.findIndex((h) => /课程名称|课程名|名称|course\s*name/i.test(h));
-  const idxCredits = header.findIndex((h) => /学分|credit/i.test(h));
+  const { idxModule, idxReq, idxCode, idxName, idxCredits } = getTrainingPlanHeaderIndexes(header);
 
   const modMap = new Map();
   for (let i = 1; i < lines.length; i += 1) {
@@ -1231,11 +1351,7 @@ function parseTrainingPlanFromHtml(html) {
   }
   if (headerRowIndex < 0) headerRowIndex = 0;
   const header = rows[headerRowIndex] || [];
-  const idxModule = header.findIndex((h) => /模块|模块名称|module/i.test(h));
-  const idxReq = header.findIndex((h) => /模块学分|要求学分|required/i.test(h));
-  const idxCode = header.findIndex((h) => /代码|课程代码|course\s*code/i.test(h));
-  const idxName = header.findIndex((h) => /课程名称|课程名|名称|course\s*name/i.test(h));
-  const idxCredits = header.findIndex((h) => /学分|credit/i.test(h));
+  const { idxModule, idxReq, idxCode, idxName, idxCredits } = getTrainingPlanHeaderIndexes(header);
 
   const modMap = new Map();
   for (let i = headerRowIndex + 1; i < rows.length; i += 1) {
@@ -3014,8 +3130,18 @@ async function main() {
           return fail(res, String(e2?.code || "PARSE_FAILED"), msg || "成绩单解析失败", 400);
         }
 
-        const courses = Array.isArray(parsed.courses) ? parsed.courses : [];
-        if (!courses.length) return fail(res, "NO_COURSES", "未识别到课程信息，请上传HTML/CSV格式的成绩单", 400);
+        let courses = Array.isArray(parsed.courses) ? parsed.courses : [];
+
+        if (parsed?.format === "pdf" && parsed?.text) {
+          const planMatchedCourses = matchTranscriptCoursesFromPlanPdfText({
+            plan: { name: plan.name, modules: plan.modules },
+            text: parsed.text,
+          });
+          if (planMatchedCourses.length) {
+            courses = dedupeTranscriptCourses([...courses, ...planMatchedCourses]);
+          }
+        }
+        if (!courses.length) return fail(res, "NO_COURSES", "未识别到课程信息：请确认PDF为文字版成绩单，或上传HTML/CSV格式的成绩单", 400);
 
         const now = Date.now();
         const parseSummary = buildTranscriptParseSummary({

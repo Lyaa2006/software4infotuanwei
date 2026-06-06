@@ -10,31 +10,65 @@ function formatDateTime(ts) {
   if (Number.isNaN(d.getTime())) return ''
   return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }
-function defaultSemesterFromNow() {
-  const now = new Date(); const y = now.getFullYear(); const m = now.getMonth() + 1; return m <= 7 ? `${y}-春` : `${y}-秋`
+
+function buildCsvLine(values) {
+  return values.map((value) => {
+    const text = String(value ?? '')
+    return `"${text.replace(/"/g, '""')}"`
+  }).join(',')
 }
-function splitCsvLine(line) {
-  const s = String(line ?? ''); const out = []; let cur = ''; let inQuote = false
-  for (let i=0;i<s.length;i++){ const ch = s[i]; if (ch === '"') { if (inQuote && s[i+1] === '"') { cur += '"'; i += 1 } else { inQuote = !inQuote } continue } if (!inQuote && ch === ',') { out.push(cur); cur = ''; continue } cur += ch }
-  out.push(cur); return out.map(x => String(x ?? '').trim())
+
+function normalizePlanModules(modules) {
+  const list = Array.isArray(modules) ? modules : []
+  return list.map((module, moduleIndex) => ({
+    localId: `module-${Date.now()}-${moduleIndex}-${Math.random().toString(36).slice(2, 8)}`,
+    name: String(module?.name ?? '').trim(),
+    requiredCredits: String(module?.requiredCredits ?? ''),
+    courses: (Array.isArray(module?.courses) ? module.courses : []).map((course, courseIndex) => ({
+      localId: `course-${Date.now()}-${moduleIndex}-${courseIndex}-${Math.random().toString(36).slice(2, 8)}`,
+      code: String(course?.code ?? '').trim(),
+      name: String(course?.name ?? '').trim(),
+      credits: String(course?.credits ?? ''),
+    })),
+  }))
 }
-function parseSemesterCoursesCsv(text) {
-  const lines = String(text ?? '').replace(/\r/g,'').split('\n').map(x => String(x).trim()).filter(Boolean)
-  const out = []
-  for (const line of lines) {
-    const cols = splitCsvLine(line)
-    const courseCode = String(cols[0] ?? '').trim(); const courseName = String(cols[1] ?? '').trim(); const credits = Number(String(cols[2] ?? '').trim() || 0); const moduleName = String(cols[3] ?? '').trim()
-    if (!courseCode && !courseName) continue
-    out.push({ courseCode, courseName, credits, moduleName })
+
+function createEmptyCourse() {
+  return {
+    localId: `course-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    code: '',
+    name: '',
+    credits: '',
   }
-  return out
+}
+
+function createEmptyModule() {
+  return {
+    localId: `module-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: '',
+    requiredCredits: '',
+    courses: [createEmptyCourse()],
+  }
+}
+
+function serializePlanModules(modules) {
+  return (Array.isArray(modules) ? modules : []).map((module) => ({
+    name: String(module?.name ?? '').trim(),
+    requiredCredits: Number(String(module?.requiredCredits ?? '').trim() || 0),
+    courses: (Array.isArray(module?.courses) ? module.courses : [])
+      .map((course) => ({
+        code: String(course?.code ?? '').trim(),
+        name: String(course?.name ?? '').trim(),
+        credits: Number(String(course?.credits ?? '').trim() || 0),
+      }))
+      .filter((course) => course.code || course.name),
+  })).filter((module) => module.name || module.courses.length)
 }
 
 export default function Academic() {
-  const featureDisabled = true
+  const featureDisabled = false
   const [isAdmin, setIsAdmin] = useState(false)
   const [isStudent, setIsStudent] = useState(false)
-  const [semester, setSemester] = useState(defaultSemesterFromNow())
   const [planNames, setPlanNames] = useState([])
   const [planIndex, setPlanIndex] = useState(0)
   const [selectedPlanName, setSelectedPlanName] = useState('')
@@ -48,22 +82,11 @@ export default function Academic() {
   const [importingPlan, setImportingPlan] = useState(false)
   const [savingPlan, setSavingPlan] = useState(false)
 
-  // plan edit form
   const [planEditingId, setPlanEditingId] = useState('')
   const [planFormName, setPlanFormName] = useState('')
-  const [planFormModulesJson, setPlanFormModulesJson] = useState('')
+  const [planFormModules, setPlanFormModules] = useState([createEmptyModule()])
 
-  // semester courses admin
-  const [adminSemester, setAdminSemester] = useState(defaultSemesterFromNow())
-  const [semesterCoursesCsv, setSemesterCoursesCsv] = useState('')
-  const [semesterCoursesLoadedCount, setSemesterCoursesLoadedCount] = useState(0)
-  const [savingSemesterCourses, setSavingSemesterCourses] = useState(false)
   const nav = useNavigate()
-
-  useEffect(() => {
-    if (!featureDisabled) return
-    alert('开发中，敬请期待')
-  }, [])
 
   useEffect(() => {
     if (featureDisabled) return
@@ -93,9 +116,9 @@ export default function Academic() {
     try {
       if (loading) return
       setLoading(true)
-      const r = await api.featureApi.academicStudentReport({ semester, planName: selectedPlanName })
+      const r = await api.featureApi.academicStudentReport({ planName: selectedPlanName })
       setReportLoaded(true)
-      setReport({ hasTranscript: !!r.hasTranscript, planName: String(r.planName ?? ''), transcriptCreatedAtText: r.transcript?.createdAt ? formatDateTime(r.transcript.createdAt) : '', modules: Array.isArray(r.modules) ? r.modules : [], missingCourses: Array.isArray(r.missingCourses) ? r.missingCourses : [], recommendations: Array.isArray(r.recommendations) ? r.recommendations : [] })
+      setReport({ hasTranscript: !!r.hasTranscript, planName: String(r.planName ?? ''), transcriptCreatedAtText: r.transcript?.createdAt ? formatDateTime(r.transcript.createdAt) : '', modules: Array.isArray(r.modules) ? r.modules : [], missingCourses: Array.isArray(r.missingCourses) ? r.missingCourses : [] })
     } catch (e) {
       alert(e?.message || '加载失败')
     } finally {
@@ -111,19 +134,16 @@ export default function Academic() {
     } catch (e) {}
   }
 
-  function onSemesterChange(e) { setSemester(e.target.value) }
   function onPlanPickerChange(e) { const idx = Number(e.target.value || 0); setPlanIndex(idx); const names = Array.isArray(planNames) ? planNames : []; const sel = String(names[idx] ?? ''); setSelectedPlanName(sel); loadReport() }
 
   async function onChooseTranscript(e) {
     const file = (e.target.files || [])[0]
     if (!file) return
-    // allow transcript upload — previously disabled with a "敬请期待" alert
     if (uploading) return
     setUploading(true)
     try {
       const session = api.auth.getSession()
       const parts = []
-      if (semester) parts.push(`semester=${encodeURIComponent(semester)}`)
       if (selectedPlanName) parts.push(`planName=${encodeURIComponent(selectedPlanName)}`)
       const qs = parts.length ? `?${parts.join('&')}` : ''
       const url = `${api.getBaseUrl() || ''}/api/academic/student/transcript/upload${qs}`
@@ -141,6 +161,13 @@ export default function Academic() {
     }
   }
 
+  function applyPlanToEditor({ id = '', name = '', modules = [] }) {
+    setPlanEditingId(String(id || ''))
+    setPlanFormName(String(name || ''))
+    const normalized = normalizePlanModules(modules)
+    setPlanFormModules(normalized.length ? normalized : [createEmptyModule()])
+  }
+
   async function onImportPlanFile(e) {
     const file = (e.target.files || [])[0]
     if (!file) return
@@ -149,16 +176,14 @@ export default function Academic() {
     try {
       const session = api.auth.getSession()
       const url = `${api.getBaseUrl() || ''}/api/academic/admin/plans/import`
-      const fd = new FormData(); fd.append('file', file); fd.append('name', planFormName || file.name || 'imported')
+      const fd = new FormData(); fd.append('file', file); fd.append('name', planFormName || file.name.replace(/\.[^.]+$/, '') || 'imported')
       const opts = { method: 'POST', headers: {}, body: fd }
       if (session?.token) opts.headers['Authorization'] = `Bearer ${session.token}`
       const res = await fetch(url, opts); const text = await res.text(); const obj = JSON.parse(text)
       if (!obj?.success) throw new Error(obj?.message || '导入失败')
-      const modules = obj?.data?.modules || []
-      const id = obj?.data?.id || ''
-      setPlanEditingId(String(id || ''))
-      setPlanFormModulesJson(JSON.stringify(modules, null, 2))
-      alert('导入成功')
+      const data = obj?.data || {}
+      applyPlanToEditor({ id: data.id, name: data.name || planFormName || file.name, modules: data.modules || [] })
+      alert('导入成功，请继续检查并保存')
       await loadPlans()
     } catch (err) {
       alert(err?.message || '导入失败')
@@ -167,50 +192,105 @@ export default function Academic() {
     }
   }
 
-  function onResetPlanForm() { setPlanEditingId(''); setPlanFormName(''); setPlanFormModulesJson('') }
+  function onResetPlanForm() {
+    setPlanEditingId('')
+    setPlanFormName('')
+    setPlanFormModules([createEmptyModule()])
+  }
 
-  function onEditPlan(item) { setPlanEditingId(item._id || item.id || ''); setPlanFormName(item.name || ''); setPlanFormModulesJson(JSON.stringify(item.modules || [], null, 2)) }
+  function onEditPlan(item) {
+    applyPlanToEditor({ id: item._id || item.id || '', name: item.name || '', modules: item.modules || [] })
+  }
+
+  function updateModuleField(moduleId, field, value) {
+    setPlanFormModules((prev) => prev.map((module) => module.localId === moduleId ? { ...module, [field]: value } : module))
+  }
+
+  function addModule() {
+    setPlanFormModules((prev) => [...prev, createEmptyModule()])
+  }
+
+  function removeModule(moduleId) {
+    setPlanFormModules((prev) => {
+      const next = prev.filter((module) => module.localId !== moduleId)
+      return next.length ? next : [createEmptyModule()]
+    })
+  }
+
+  function addCourse(moduleId) {
+    setPlanFormModules((prev) => prev.map((module) => module.localId === moduleId ? { ...module, courses: [...module.courses, createEmptyCourse()] } : module))
+  }
+
+  function updateCourseField(moduleId, courseId, field, value) {
+    setPlanFormModules((prev) => prev.map((module) => {
+      if (module.localId !== moduleId) return module
+      return {
+        ...module,
+        courses: module.courses.map((course) => course.localId === courseId ? { ...course, [field]: value } : course),
+      }
+    }))
+  }
+
+  function removeCourse(moduleId, courseId) {
+    setPlanFormModules((prev) => prev.map((module) => {
+      if (module.localId !== moduleId) return module
+      const nextCourses = module.courses.filter((course) => course.localId !== courseId)
+      return { ...module, courses: nextCourses.length ? nextCourses : [createEmptyCourse()] }
+    }))
+  }
 
   async function onDeletePlan(id) {
     if (!id) return
     if (!confirm('确认删除该培养方案？')) return
-    try { await api.featureApi.academicAdminPlanDelete({ id }); alert('已删除'); await loadPlans(); onResetPlanForm() } catch (e) { alert(e?.message || '删除失败') }
+    try {
+      await api.featureApi.academicAdminPlanDelete({ id })
+      alert('已删除')
+      await loadPlans()
+      if (String(planEditingId) === String(id)) onResetPlanForm()
+    } catch (e) { alert(e?.message || '删除失败') }
   }
 
   async function onSavePlan() {
     if (savingPlan) return
     const name = String(planFormName || '').trim(); if (!name) { alert('请填写方案名称'); return }
-    let modules
-    try { modules = JSON.parse(String(planFormModulesJson || '').trim() || '[]') } catch { alert('modules JSON 不合法'); return }
-    if (!Array.isArray(modules)) { alert('modules 必须是数组'); return }
+    const modules = serializePlanModules(planFormModules)
+    if (!modules.length) { alert('请至少填写一个模块或课程'); return }
+    const hasInvalidModule = modules.some((module) => !module.name)
+    if (hasInvalidModule) { alert('请填写每个模块的名称'); return }
+    const hasInvalidCourse = modules.some((module) => module.courses.some((course) => !course.name))
+    if (hasInvalidCourse) { alert('请填写课程名称后再保存'); return }
     setSavingPlan(true)
     try {
       if (planEditingId) await api.featureApi.academicAdminPlanUpdate({ id: planEditingId, name, modules })
-      else await api.featureApi.academicAdminPlanCreate({ name, modules })
+      else {
+        const resp = await api.featureApi.academicAdminPlanCreate({ name, modules })
+        if (resp?.id) setPlanEditingId(String(resp.id))
+      }
       alert('已保存')
-      await loadPlans(); onResetPlanForm()
+      await loadPlans()
+      applyPlanToEditor({ id: planEditingId, name, modules })
     } catch (e) { alert(e?.message || '保存失败') }
     finally { setSavingPlan(false) }
   }
 
-  async function onLoadSemesterCourses() {
-    const sem = String(adminSemester || '').trim() || defaultSemesterFromNow()
-    try {
-      const resp = await api.featureApi.academicAdminSemesterCourses({ semester: sem })
-      const items = Array.isArray(resp.items) ? resp.items : []
-      const csv = items.map(x => `${x.courseCode || ''},${x.courseName || ''},${x.credits || 0},${x.moduleName || ''}`).join('\n')
-      setAdminSemester(sem); setSemesterCoursesCsv(csv); setSemesterCoursesLoadedCount(items.length)
-      alert('已加载')
-    } catch (e) { alert(e?.message || '加载失败') }
-  }
-
-  async function onSaveSemesterCourses() {
-    if (savingSemesterCourses) return
-    const sem = String(adminSemester || '').trim() || defaultSemesterFromNow()
-    const items = parseSemesterCoursesCsv(semesterCoursesCsv)
-    if (!items.length) { alert('课程列表为空'); return }
-    setSavingSemesterCourses(true)
-    try { await api.featureApi.academicAdminSemesterCoursesSave({ semester: sem, items }); alert('已保存'); setAdminSemester(sem); await onLoadSemesterCourses() } catch (e) { alert(e?.message || '保存失败') } finally { setSavingSemesterCourses(false) }
+  function onDownloadPlanTemplate() {
+    const rows = [
+      ['模块名称', '要求学分', '课程代码', '课程名称', '学分'],
+      ['通识必修', '12', 'GE101', '大学英语', '2'],
+      ['通识必修', '12', 'GE102', '高等数学A(上)', '4'],
+      ['专业必修', '18', 'CS201', '数据结构', '3'],
+      ['专业必修', '18', 'CS202', '计算机组成原理', '3'],
+    ]
+    const csv = `${rows.map(buildCsvLine).join('\r\n')}`.replace(/^\u001a/, '\uFEFF')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '培养方案导入模板.csv'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   if (featureDisabled) {
@@ -226,11 +306,10 @@ export default function Academic() {
   return (
     <div className="container">
       <h2>学业情况分析</h2>
-      <div className="card">
+      {isStudent && <div className="card">
         <h3>学生视图</h3>
         <div style={{ marginBottom: 8 }}>
-          <label>学期: <input value={semester} onChange={onSemesterChange} /></label>
-          <label style={{ marginLeft: 12 }}>培养方案: <select value={planIndex} onChange={onPlanPickerChange}>{planNames.map((n,i)=> <option key={n} value={i}>{n}</option>)}</select></label>
+          <label>培养方案: <select value={planIndex} onChange={onPlanPickerChange}>{planNames.map((n,i)=> <option key={n} value={i}>{n}</option>)}</select></label>
           <button className="btn" style={{ marginLeft: 8 }} onClick={loadReport} disabled={loading}>{loading ? '加载中...' : '加载学业报告'}</button>
         </div>
         <div style={{ marginTop: 8 }}>
@@ -253,17 +332,6 @@ export default function Academic() {
               ))}
             </div>
 
-            <h5 style={{ marginTop: 12 }}>推荐课程</h5>
-            {(report.recommendations || []).length ? (
-              (report.recommendations || []).map((rec, i) => (
-                <div key={rec.courseCode || rec.courseName || i} style={{ padding: '8px 0', borderBottom: '1px solid #f5f5f5' }}>
-                  <div style={{ fontWeight: 600 }}>{rec.courseName || rec.courseCode}</div>
-                  <div style={{ color: '#666', fontSize: 13 }}>{rec.semester || '-'} · {rec.credits || 0} 学分 · {rec.moduleName || '-'}</div>
-                  <div style={{ color: '#444', marginTop: 6 }}>{rec.reason}</div>
-                </div>
-              ))
-            ) : <div style={{ color: '#888' }}>暂无推荐（可能未配置本学期开课课程，或必修已修完）</div>}
-
             <h5 style={{ marginTop: 12 }}>未修课程</h5>
             {(report.missingCourses || []).length ? (
               (report.missingCourses || []).map((c, i) => (
@@ -278,39 +346,100 @@ export default function Academic() {
 
           {!report.hasTranscript && <div style={{ marginTop: 8, color: '#888' }}>尚未上传成绩单</div>}
         </div>}
-      </div>
-
-      {isAdmin && <div className="card" style={{ marginTop: 12 }}>
-        <h3>管理员：培养方案管理</h3>
-        <div>
-          <ul>{plans.map(p => <li key={p._id || p.id}><strong>{p.name}</strong> <small style={{ marginLeft: 8 }}>{p.updatedAtText}</small> <button className="btn" style={{ marginLeft: 8 }} onClick={() => onEditPlan(p)}>编辑</button> <button className="btn" style={{ marginLeft: 8 }} onClick={() => onDeletePlan(p._id || p.id)}>删除</button></li>)}</ul>
-        </div>
-        <div style={{ marginTop: 8 }}>
-          <div><input placeholder="方案名" value={planFormName} onChange={e=>setPlanFormName(e.target.value)} /></div>
-          <div style={{ marginTop: 8 }}><textarea rows={8} style={{ width: '100%' }} placeholder='modules JSON' value={planFormModulesJson} onChange={e=>setPlanFormModulesJson(e.target.value)} /></div>
-          <div style={{ marginTop: 8 }}>
-            <button className="btn" onClick={onSavePlan}>{savingPlan ? '保存中...' : '保存方案'}</button>
-            <button className="btn" style={{ marginLeft: 8 }} onClick={onResetPlanForm}>重置</button>
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <label className="btn">导入培养方案<input type="file" style={{ display: 'none' }} onChange={onImportPlanFile} /></label>
-            <span style={{ marginLeft: 8 }}>{importingPlan ? '导入中...' : ''}</span>
-          </div>
-        </div>
       </div>}
 
-      {isAdmin && <div className="card" style={{ marginTop: 12 }}>
-        <h3>管理员：学期课程（CSV）</h3>
-        <div>
-          <label>学期: <input value={adminSemester} onChange={e=>setAdminSemester(e.target.value)} /></label>
-          <button className="btn" style={{ marginLeft: 8 }} onClick={onLoadSemesterCourses}>加载课程</button>
+      {isAdmin && <div className="card academic-admin-card" style={{ marginTop: 12 }}>
+        <div className="academic-admin-header">
+          <div>
+            <h3>管理员：培养方案管理</h3>
+            <p className="section-note">逐条维护模块和课程，不再直接编辑 JSON。</p>
+          </div>
+          <div className="inline-actions" style={{ marginTop: 0 }}>
+            <button className="btn btn-secondary" onClick={onResetPlanForm}>新建方案</button>
+            <button className="btn" onClick={onDownloadPlanTemplate}>下载CSV模板</button>
+            <label className="btn">
+              导入培养方案
+              <input type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={onImportPlanFile} />
+            </label>
+          </div>
         </div>
-        <div style={{ marginTop: 8 }}>
-          <textarea rows={10} style={{ width: '100%' }} value={semesterCoursesCsv} onChange={e=>setSemesterCoursesCsv(e.target.value)} placeholder={'courseCode,courseName,credits,moduleName\n...'} />
-        </div>
-        <div style={{ marginTop: 8 }}>
-          <button className="btn" onClick={onSaveSemesterCourses}>{savingSemesterCourses ? '保存中...' : '保存课程'}</button>
-          <span style={{ marginLeft: 8 }}>已加载 {semesterCoursesLoadedCount} 条</span>
+        <div className="academic-admin-layout">
+          <section className="academic-plan-list">
+            <div className="academic-panel-heading">
+              <h4>已有方案</h4>
+              <span className="badge">{plans.length} 个方案</span>
+            </div>
+            {plans.length ? (
+              <div className="academic-plan-items">
+                {plans.map((p) => (
+                  <div key={p._id || p.id} className={`academic-plan-item ${String(planEditingId) === String(p._id || p.id) ? 'active' : ''}`}>
+                    <div className="academic-plan-item-main">
+                      <div className="academic-plan-item-name">{p.name}</div>
+                      <div className="academic-plan-item-meta">{p.updatedAtText || '未记录更新时间'}</div>
+                    </div>
+                    <div className="inline-actions" style={{ marginTop: 0 }}>
+                      <button className="btn btn-secondary" onClick={() => onEditPlan(p)}>编辑</button>
+                      <button className="btn btn-secondary" onClick={() => onDeletePlan(p._id || p.id)}>删除</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : <p className="empty-state">暂无培养方案，先下载模板填写后导入，或者在右侧新建。</p>}
+          </section>
+
+          <section className="academic-plan-editor">
+            <div className="academic-panel-heading">
+              <h4>{planEditingId ? '编辑方案' : '新建方案'}</h4>
+              <span className="academic-editor-hint">导入后也会落到这里继续调整</span>
+            </div>
+            <div className="form-row">
+              <label className="form-label">方案名称</label>
+              <input className="input" placeholder="例如：2024级计算机科学与技术本科培养方案" value={planFormName} onChange={(e) => setPlanFormName(e.target.value)} />
+            </div>
+            <div className="academic-module-list">
+              {planFormModules.map((module, moduleIndex) => (
+                <div key={module.localId} className="academic-module-card">
+                  <div className="academic-module-header">
+                    <div>
+                      <div className="academic-module-index">模块 {moduleIndex + 1}</div>
+                      <div className="academic-module-title">{module.name || '未命名模块'}</div>
+                    </div>
+                    <button className="btn btn-secondary" onClick={() => removeModule(module.localId)}>删除模块</button>
+                  </div>
+                  <div className="academic-module-grid">
+                    <div className="form-row">
+                      <label className="form-label">模块名称</label>
+                      <input className="input" value={module.name} placeholder="例如：专业必修" onChange={(e) => updateModuleField(module.localId, 'name', e.target.value)} />
+                    </div>
+                    <div className="form-row">
+                      <label className="form-label">要求学分</label>
+                      <input className="input" value={module.requiredCredits} placeholder="例如：18" onChange={(e) => updateModuleField(module.localId, 'requiredCredits', e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="academic-course-list">
+                    {module.courses.map((course, courseIndex) => (
+                      <div key={course.localId} className="academic-course-row">
+                        <div className="academic-course-number">{courseIndex + 1}</div>
+                        <input className="input" value={course.code} placeholder="课程代码" onChange={(e) => updateCourseField(module.localId, course.localId, 'code', e.target.value)} />
+                        <input className="input" value={course.name} placeholder="课程名称" onChange={(e) => updateCourseField(module.localId, course.localId, 'name', e.target.value)} />
+                        <input className="input" value={course.credits} placeholder="学分" onChange={(e) => updateCourseField(module.localId, course.localId, 'credits', e.target.value)} />
+                        <button className="btn btn-secondary" onClick={() => removeCourse(module.localId, course.localId)}>删除</button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="inline-actions">
+                    <button className="btn btn-secondary" onClick={() => addCourse(module.localId)}>新增课程</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="inline-actions">
+              <button className="btn btn-secondary" onClick={addModule}>新增模块</button>
+              <button className="btn" onClick={onSavePlan}>{savingPlan ? '保存中...' : '保存方案'}</button>
+              <button className="btn btn-secondary" onClick={onResetPlanForm}>清空编辑区</button>
+              <span className="academic-editor-hint">{importingPlan ? '导入中...' : '模板列顺序：模块名称、要求学分、课程代码、课程名称、学分。'}</span>
+            </div>
+          </section>
         </div>
       </div>}
     </div>
