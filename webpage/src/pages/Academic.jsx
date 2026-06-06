@@ -117,12 +117,7 @@ export default function Academic() {
   async function onChooseTranscript(e) {
     const file = (e.target.files || [])[0]
     if (!file) return
-    const uploadDisabled = true
-    if (uploadDisabled) {
-      alert('开发中，敬请期待')
-      e.target.value = ''
-      return
-    }
+    // allow transcript upload — previously disabled with a "敬请期待" alert
     if (uploading) return
     setUploading(true)
     try {

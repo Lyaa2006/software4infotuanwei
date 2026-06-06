@@ -186,11 +186,7 @@ export default function Activity() {
 
   async function uploadPhotos(files) {
     if (!files || !files.length) return
-    const uploadDisabled = true
-    if (uploadDisabled) {
-      alert('开发中，敬请期待')
-      return
-    }
+    // allow uploads — previously disabled with a "敬请期待" alert
     const apiSvc = api
     const baseUrl = apiSvc.getBaseUrl()
     const outPaths = []
@@ -307,12 +303,8 @@ export default function Activity() {
         <button className="btn btn-secondary back-home-btn" type="button" onClick={() => navigate('/')}>返回首页</button>
       </div>
 
-      <div className="card">
+      {isStudent && <div className="card">
         <h3>我的活动</h3>
-        <div style={{ marginBottom: 8 }}>
-          <label className="btn">上传活动照片<input type="file" style={{ display: 'none' }} multiple onChange={(e) => { uploadPhotos(e.target.files); e.target.value = '' }} /></label>
-          <span style={{ marginLeft: 8 }}>{uploading ? '上传中...' : ''}</span>
-        </div>
         <ul style={{ listStyle: 'none', padding: 0 }}>
           {myItems.map((i) => (
             <li key={i._id || i.id} style={{ padding: 8, borderBottom: '1px solid #f0f0f0' }}>
@@ -328,7 +320,7 @@ export default function Activity() {
             </li>
           ))}
         </ul>
-      </div>
+      </div>}
 
       {isStudent && (
         <div className="card" style={{ marginTop: 12 }}>
