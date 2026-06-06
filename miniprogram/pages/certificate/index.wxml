@@ -1,5 +1,49 @@
 <view class="container">
-  <view class="card">
+  <view class="card" wx:if="{{!isAdmin}}">
+    <view class="section_title">选择模板</view>
+    <picker mode="selector" range="{{templateTitles}}" value="{{templateIndex}}" bindchange="onTemplatePickerChange">
+      <view class="input">{{selectedTemplateTitle || '请选择模板'}}</view>
+    </picker>
+    <view class="hint" wx:if="{{selectedTemplateMeta}}">{{selectedTemplateMeta}}</view>
+    <view class="btn_row">
+      <button class="ghost" size="mini" disabled="{{!selectedTemplateId}}" bindtap="onDownloadSelectedTemplate">下载模板</button>
+      <button class="ghost" size="mini" disabled="{{!selectedTemplateId}}" bindtap="onPreviewPdf">预览</button>
+      <button class="primary" size="mini" type="primary" disabled="{{!selectedTemplateId}}" bindtap="onDownloadPdf">下载PDF</button>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{!isAdmin}}">
+    <view class="section_title">填写字段</view>
+    <view class="hint">系统会自动填充：{{nameHint}}</view>
+    <view class="hint" wx:if="{{!selectedTemplateId}}">请先选择模板</view>
+
+    <view wx:if="{{selectedTemplateId}}">
+      <view class="empty" wx:if="{{!manualFields.length}}">该模板无需手动填写字段</view>
+      <view class="form_row" wx:for="{{manualFields}}" wx:key="key">
+        <view class="label">{{item.label}}</view>
+        <textarea
+          wx:if="{{item.multiline}}"
+          class="textarea"
+          placeholder="{{item.placeholder}}"
+          value="{{item.value}}"
+          data-key="{{item.key}}"
+          bindinput="onManualFieldInput"
+          auto-height
+          maxlength="500"
+        ></textarea>
+        <input
+          wx:else
+          class="input"
+          placeholder="{{item.placeholder}}"
+          value="{{item.value}}"
+          data-key="{{item.key}}"
+          bindinput="onManualFieldInput"
+        />
+      </view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{isAdmin}}">
     <view class="section_title">模板列表</view>
     <view class="list" wx:if="{{templates.length}}">
       <view class="item" wx:for="{{templates}}" wx:key="_id">
@@ -9,39 +53,10 @@
         </view>
         <view class="item_actions">
           <button size="mini" class="ghost" data-id="{{item._id}}" bindtap="onDownloadTemplate">下载模板</button>
-          <button size="mini" class="primary" type="primary" data-id="{{item._id}}" bindtap="onGeneratePdf">
-            生成PDF
-          </button>
         </view>
       </view>
     </view>
     <view class="empty" wx:if="{{!templates.length}}">暂无模板</view>
-  </view>
-
-  <view class="card">
-    <view class="section_title">自动填充字段</view>
-
-    <view class="hint">系统会自动填充：{{nameHint}}</view>
-
-    <view class="form_row">
-      <view class="label">学院（可选）</view>
-      <input class="input" placeholder="例如：信息工程学院" value="{{college}}" bindinput="onCollegeInput" />
-    </view>
-
-    <view class="form_row">
-      <view class="label">连排（可选）</view>
-      <input class="input" placeholder="例如：三连二排" value="{{platoon}}" bindinput="onPlatoonInput" />
-    </view>
-
-    <view class="form_row">
-      <view class="label">请假事由（可选）</view>
-      <textarea class="textarea" placeholder="例如：上课冲突/生病/比赛等" value="{{reason}}" bindinput="onReasonInput" auto-height maxlength="200"></textarea>
-    </view>
-
-    <view class="form_row">
-      <view class="label">请假证明（可选）</view>
-      <textarea class="textarea" placeholder="例如：附门诊证明/比赛通知等" value="{{proof}}" bindinput="onProofInput" auto-height maxlength="200"></textarea>
-    </view>
   </view>
 
   <view class="card" wx:if="{{isAdmin}}">
@@ -62,6 +77,6 @@
         <button class="primary" type="primary" loading="{{uploading}}" disabled="{{uploading}}" bindtap="onUpload">上传</button>
       </view>
     </view>
-    <view class="hint">提示：xlsx 模板目前仅支持下载，不支持自动转 PDF。</view>
+    <view class="hint">提示：如需学生端动态字段，请在模板中使用「双大括号字段名双大括号」占位符</view>
   </view>
 </view>

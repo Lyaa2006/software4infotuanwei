@@ -47,14 +47,49 @@ function tryReadServerError(tempFilePath) {
   }
 }
 
+function fieldLabel(key) {
+  const k = String(key ?? "").trim();
+  const map = {
+    college: "学院",
+    platoon: "连排",
+    reason: "事由",
+    proof: "证明",
+    phone: "联系电话",
+    teacher: "老师",
+    place: "地点",
+  };
+  return map[k] || k || "字段";
+}
+
+function fieldPlaceholder(key) {
+  const k = String(key ?? "").trim();
+  const map = {
+    college: "例如：信息工程学院",
+    platoon: "例如：三连二排",
+    reason: "例如：上课冲突/生病/比赛等",
+    proof: "例如：附门诊证明/比赛通知等",
+    phone: "例如：13800000000",
+    teacher: "例如：张老师",
+    place: "例如：教一-101",
+  };
+  return map[k] || `请输入${fieldLabel(k)}`;
+}
+
+function isMultilineField(key) {
+  const k = String(key ?? "").trim();
+  return k === "reason" || k === "proof" || k.endsWith("Text") || k.endsWith("Desc") || k.endsWith("Note");
+}
+
 Page({
   data: {
     isAdmin: false,
     templates: [],
-    college: "",
-    platoon: "",
-    reason: "",
-    proof: "",
+    templateTitles: [],
+    templateIndex: 0,
+    selectedTemplateId: "",
+    selectedTemplateTitle: "",
+    selectedTemplateMeta: "",
+    manualFields: [],
     nameHint: "姓名、学号、日期",
     uploadTitle: "",
     uploadCategory: "",
@@ -83,7 +118,19 @@ Page({
       const api = require("../../services/api");
       const resp = await api.featureApi.certTemplateList();
       const templates = Array.isArray(resp.items) ? resp.items : [];
-      this.setData({ templates });
+      const templateTitles = templates.map((t) => String(t?.title ?? "") || `模板${String(t?._id ?? "")}`);
+      this.setData({ templates, templateTitles });
+      if (!this.data.isAdmin && templates.length) {
+        const currentId = String(this.data.selectedTemplateId || "");
+        if (!currentId) {
+          const first = templates[0] || null;
+          const id = String(first?._id ?? "");
+          const title = String(first?.title ?? "");
+          const meta = `${String(first?.format ?? "").toUpperCase()}${first?.category ? ` · ${String(first.category)}` : ""}`;
+          this.setData({ templateIndex: 0, selectedTemplateId: id, selectedTemplateTitle: title, selectedTemplateMeta: meta });
+          await this.loadTemplateFields(id);
+        }
+      }
     } catch (e) {
       wx.showToast({ title: e?.message || "加载失败", icon: "none" });
     } finally {
@@ -92,20 +139,51 @@ Page({
     }
   },
 
-  onCollegeInput(e) {
-    this.setData({ college: e.detail.value });
+  async onTemplatePickerChange(e) {
+    const idx = Number(e.detail.value || 0);
+    const t = this.data.templates[idx] || null;
+    const id = String(t?._id ?? "");
+    const title = String(t?.title ?? "");
+    const meta = `${String(t?.format ?? "").toUpperCase()}${t?.category ? ` · ${String(t.category)}` : ""}`;
+    this.setData({
+      templateIndex: idx,
+      selectedTemplateId: id,
+      selectedTemplateTitle: title,
+      selectedTemplateMeta: meta,
+      manualFields: [],
+    });
+    if (id) await this.loadTemplateFields(id);
   },
 
-  onPlatoonInput(e) {
-    this.setData({ platoon: e.detail.value });
+  async loadTemplateFields(id) {
+    const tplId = String(id ?? "").trim();
+    if (!tplId) return;
+    wx.showLoading({ title: "读取模板..." });
+    try {
+      const api = require("../../services/api");
+      const resp = await api.featureApi.certTemplateFields({ id: tplId });
+      const keys = Array.isArray(resp.manualFields) ? resp.manualFields : [];
+      const manualFields = keys.map((k) => ({
+        key: String(k),
+        label: fieldLabel(k),
+        placeholder: fieldPlaceholder(k),
+        multiline: isMultilineField(k),
+        value: "",
+      }));
+      this.setData({ manualFields });
+    } catch (e) {
+      wx.showToast({ title: e?.message || "读取字段失败", icon: "none" });
+      this.setData({ manualFields: [] });
+    } finally {
+      wx.hideLoading();
+    }
   },
 
-  onReasonInput(e) {
-    this.setData({ reason: e.detail.value });
-  },
-
-  onProofInput(e) {
-    this.setData({ proof: e.detail.value });
+  onManualFieldInput(e) {
+    const key = String(e.currentTarget?.dataset?.key || "");
+    const v = String(e.detail?.value ?? "");
+    const next = (this.data.manualFields || []).map((f) => (f.key === key ? { ...f, value: v } : f));
+    this.setData({ manualFields: next });
   },
 
   onUploadTitleInput(e) {
@@ -171,6 +249,16 @@ Page({
   onDownloadTemplate(e) {
     const id = String(e.currentTarget.dataset.id || "");
     if (!id) return;
+    this.downloadTemplateById(id);
+  },
+
+  onDownloadSelectedTemplate() {
+    const id = String(this.data.selectedTemplateId || "");
+    if (!id) return;
+    this.downloadTemplateById(id);
+  },
+
+  downloadTemplateById(id) {
     const api = require("../../services/api");
     const session = api.auth.getSession();
     const url = `${api.getBaseUrl()}/api/cert/templates/${encodeURIComponent(id)}/file`;
@@ -197,17 +285,26 @@ Page({
     });
   },
 
-  onGeneratePdf(e) {
-    const id = String(e.currentTarget.dataset.id || "");
+  onPreviewPdf() {
+    this.downloadAndOpenPdf({ showMenu: false });
+  },
+
+  onDownloadPdf() {
+    this.downloadAndOpenPdf({ showMenu: true });
+  },
+
+  downloadAndOpenPdf({ showMenu }) {
+    const id = String(this.data.selectedTemplateId || "");
     if (!id) return;
     const api = require("../../services/api");
     const session = api.auth.getSession();
-    const query = encodeQuery({
-      college: this.data.college,
-      platoon: this.data.platoon,
-      reason: this.data.reason,
-      proof: this.data.proof,
-    });
+    const params = {};
+    for (const f of this.data.manualFields || []) {
+      const k = String(f?.key ?? "").trim();
+      if (!k) continue;
+      params[k] = String(f?.value ?? "");
+    }
+    const query = encodeQuery(params);
     const url = `${api.getBaseUrl()}/api/cert/templates/${encodeURIComponent(id)}/pdf${query}`;
     wx.downloadFile({
       url,
@@ -226,7 +323,7 @@ Page({
         wx.openDocument({
           filePath: r.tempFilePath,
           fileType: "pdf",
-          showMenu: true,
+          showMenu: !!showMenu,
           fail: (err) => {
             wx.showToast({ title: err?.errMsg || "打开失败", icon: "none" });
           },

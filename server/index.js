@@ -278,9 +278,235 @@ async function ensureSeedDocumentTemplates(pool) {
 function renderTemplateText(raw, values) {
   let out = String(raw ?? "");
   for (const [k, v] of Object.entries(values || {})) {
-    out = out.replace(new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`, "g"), String(v ?? ""));
+    const key = String(k ?? "");
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`, "g"), String(v ?? ""));
   }
   return out;
+}
+
+const CERT_TEMPLATE_AUTO_FIELDS = ["accountId", "name", "date"];
+
+function normalizeTemplatePlaceholdersText(raw) {
+  return String(raw ?? "")
+    .replace(/[｛]/g, "{")
+    .replace(/[｝]/g, "}")
+    .replace(/&amp;#123;|&#123;|&lbrace;|&lcub;|&#x7b;|&#X7B;/g, "{")
+    .replace(/&amp;#125;|&#125;|&rbrace;|&rcub;|&#x7d;|&#X7D;/g, "}");
+}
+
+function extractTemplateFieldKeys(raw) {
+  const s = normalizeTemplatePlaceholdersText(raw);
+  const re = /\{\{\s*([^{}\s][^{}]{0,63}?)\s*\}\}/g;
+  const set = new Set();
+  let m;
+  while ((m = re.exec(s))) {
+    const key = String(m[1] ?? "").trim();
+    if (!key) continue;
+    if (key.length > 64) continue;
+    if (/\s/.test(key)) continue;
+    set.add(key);
+  }
+  return Array.from(set).sort();
+}
+
+function buildCertTemplateValues({ baseValues, query, fieldKeys }) {
+  const values = { ...(baseValues || {}) };
+  const q = query || {};
+  const keys = Array.isArray(fieldKeys) ? fieldKeys : [];
+  for (const k of keys) {
+    if (CERT_TEMPLATE_AUTO_FIELDS.includes(k)) continue;
+    values[k] = String(q?.[k] ?? "");
+  }
+  return values;
+}
+
+function xlsxWorkbookToHtmlText(wb, XLSX) {
+  const parts = [];
+  const names = Array.isArray(wb?.SheetNames) ? wb.SheetNames : [];
+  for (const n of names) {
+    const sh = wb?.Sheets ? wb.Sheets[n] : null;
+    if (!sh || typeof sh !== "object") continue;
+
+    const cellKeys = Object.keys(sh).filter((k) => k && k[0] !== "!");
+    if (!cellKeys.length) {
+      parts.push("<table></table>");
+      continue;
+    }
+
+    if (typeof sh["!ref"] !== "string" || !sh["!ref"]) {
+      let minR = Infinity;
+      let minC = Infinity;
+      let maxR = 0;
+      let maxC = 0;
+      for (const addr of cellKeys) {
+        try {
+          const dc = XLSX.utils.decode_cell(addr);
+          minR = Math.min(minR, dc.r);
+          minC = Math.min(minC, dc.c);
+          maxR = Math.max(maxR, dc.r);
+          maxC = Math.max(maxC, dc.c);
+        } catch {}
+      }
+      if (Number.isFinite(minR) && Number.isFinite(minC)) {
+        sh["!ref"] = XLSX.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
+      } else {
+        sh["!ref"] = "A1:A1";
+      }
+    }
+
+    const sheetHtml = XLSX.utils.sheet_to_html(sh, { header: "", footer: "" });
+    parts.push(sheetHtml);
+  }
+  return parts.join("<hr/>");
+}
+
+function getXlsxCellText(cell) {
+  const c = cell && typeof cell === "object" ? cell : null;
+  if (!c) return "";
+  if (typeof c.w === "string" && c.w) return c.w;
+  if (typeof c.v === "string" && c.v) return c.v;
+  if (typeof c.v === "number" || typeof c.v === "boolean") return String(c.v);
+  if (c.v && typeof c.v === "object") {
+    const rich = Array.isArray(c.v.richText) ? c.v.richText : null;
+    if (rich) return rich.map((x) => String(x?.t ?? "")).join("");
+  }
+  return "";
+}
+
+function extractXlsxFieldKeys(wb, XLSX) {
+  const set = new Set();
+  const names = Array.isArray(wb?.SheetNames) ? wb.SheetNames : [];
+  for (const n of names) {
+    const sh = wb?.Sheets ? wb.Sheets[n] : null;
+    if (!sh || typeof sh !== "object") continue;
+    const cellKeys = Object.keys(sh).filter((k) => k && k[0] !== "!");
+    for (const addr of cellKeys) {
+      const cell = sh[addr];
+      if (!cell || typeof cell !== "object") continue;
+      const text = normalizeTemplatePlaceholdersText(getXlsxCellText(cell));
+      if (!text) continue;
+      const keys = extractTemplateFieldKeys(text);
+      for (const k of keys) set.add(k);
+    }
+  }
+  return Array.from(set).sort();
+}
+
+function fillXlsxWorkbookPlaceholders(wb, values) {
+  const names = Array.isArray(wb?.SheetNames) ? wb.SheetNames : [];
+  for (const n of names) {
+    const sh = wb?.Sheets ? wb.Sheets[n] : null;
+    if (!sh || typeof sh !== "object") continue;
+    const cellKeys = Object.keys(sh).filter((k) => k && k[0] !== "!");
+    for (const addr of cellKeys) {
+      const cell = sh[addr];
+      if (!cell || typeof cell !== "object") continue;
+      if (cell.f) continue;
+      const raw = normalizeTemplatePlaceholdersText(getXlsxCellText(cell));
+      if (!raw) continue;
+      if (!raw.includes("{{")) continue;
+      const rendered = renderTemplateText(raw, values);
+      if (rendered === raw) continue;
+      cell.t = "s";
+      cell.v = rendered;
+      cell.w = rendered;
+      delete cell.r;
+      delete cell.h;
+    }
+  }
+}
+
+function inferAutoValueByHeader(header, baseValues) {
+  const h = String(header ?? "").trim();
+  if (!h) return "";
+  const name = String(baseValues?.name ?? "");
+  const accountId = String(baseValues?.accountId ?? "");
+  const date = String(baseValues?.date ?? "");
+  if (!name && !accountId && !date) return "";
+
+  if (h.includes("学号") || h.includes("工号") || h.includes("账号")) return accountId;
+  if (h === "姓名" || h.includes("负责人") || h.includes("申请人") || h.includes("学生姓名")) return name;
+  if (h.includes("日期")) return date;
+  if (h === "月份" && date) return date.slice(0, 7);
+  return "";
+}
+
+function ensureSheetRef(sh, XLSX) {
+  if (sh && typeof sh === "object" && typeof sh["!ref"] === "string" && sh["!ref"]) return;
+  const sheet = sh && typeof sh === "object" ? sh : null;
+  if (!sheet) return;
+  const cellKeys = Object.keys(sheet).filter((k) => k && k[0] !== "!");
+  if (!cellKeys.length) {
+    sheet["!ref"] = "A1:A1";
+    return;
+  }
+  let minR = Infinity;
+  let minC = Infinity;
+  let maxR = 0;
+  let maxC = 0;
+  for (const addr of cellKeys) {
+    try {
+      const dc = XLSX.utils.decode_cell(addr);
+      minR = Math.min(minR, dc.r);
+      minC = Math.min(minC, dc.c);
+      maxR = Math.max(maxR, dc.r);
+      maxC = Math.max(maxC, dc.c);
+    } catch {}
+  }
+  if (Number.isFinite(minR) && Number.isFinite(minC)) {
+    sheet["!ref"] = XLSX.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
+  } else {
+    sheet["!ref"] = "A1:A1";
+  }
+}
+
+function extractXlsxHeaderSchema(wb, XLSX) {
+  const names = Array.isArray(wb?.SheetNames) ? wb.SheetNames : [];
+  for (const n of names) {
+    const sh = wb?.Sheets ? wb.Sheets[n] : null;
+    if (!sh || typeof sh !== "object") continue;
+    ensureSheetRef(sh, XLSX);
+    const range = XLSX.utils.decode_range(String(sh["!ref"] || "A1:A1"));
+    const maxScanRows = Math.min(range.e.r, range.s.r + 50);
+    for (let r = range.s.r; r <= maxScanRows; r++) {
+      const cols = [];
+      let nonEmpty = 0;
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = sh[addr];
+        const text = normalizeTemplatePlaceholdersText(getXlsxCellText(cell)).trim();
+        cols.push({ c, text });
+        if (text) nonEmpty++;
+      }
+      if (nonEmpty >= 2) {
+        const headers = cols.map((x) => x.text).filter((x) => !!x);
+        const uniqueHeaders = Array.from(new Set(headers));
+        return { sheetName: n, headerRow: r, headers: uniqueHeaders, columns: cols.filter((x) => !!x.text) };
+      }
+    }
+  }
+  return null;
+}
+
+function fillXlsxWorkbookByHeaderSchema(wb, XLSX, schema, values) {
+  const s = schema && typeof schema === "object" ? schema : null;
+  if (!s?.sheetName || typeof s.headerRow !== "number") return;
+  const sh = wb?.Sheets ? wb.Sheets[s.sheetName] : null;
+  if (!sh || typeof sh !== "object") return;
+  const targetRow = s.headerRow + 1;
+  for (const col of Array.isArray(s.columns) ? s.columns : []) {
+    const header = String(col?.text ?? "").trim();
+    if (!header) continue;
+    const v = String(values?.[header] ?? "");
+    if (!v) continue;
+    const addr = XLSX.utils.encode_cell({ r: targetRow, c: Number(col.c || 0) });
+    sh[addr] = { t: "s", v, w: v };
+  }
+  ensureSheetRef(sh, XLSX);
+  const r = XLSX.utils.decode_range(String(sh["!ref"] || "A1:A1"));
+  r.e.r = Math.max(r.e.r, targetRow);
+  sh["!ref"] = XLSX.utils.encode_range(r);
 }
 
 function htmlToText(html) {
@@ -1666,6 +1892,9 @@ async function main() {
       const row = resp.rows?.[0] || null;
       if (!row) return fail(res, "NOT_FOUND", "学生信息不存在", 404);
 
+      // ensure today's YMD string is available for fallback calculations
+      const today = localTodayYmd();
+
       const mapped = mapPartyStudentRow(row);
       const fallbackReport =
         mapped.nextReportDue || (mapped.activistDate ? nextDueFromStart({ startYmd: mapped.activistDate, periodMonths: 3, nowYmd: today }) : "");
@@ -2124,6 +2353,59 @@ async function main() {
     }
   });
 
+  app.get("/api/cert/templates/:id/fields", authRequired, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id) return fail(res, "EMPTY_ID", "缺少ID");
+      const resp = await pool.query(
+        "SELECT id, title, format, storage_path, enabled FROM document_templates WHERE id=$1 LIMIT 1",
+        [id],
+      );
+      const tpl = resp.rows?.[0] || null;
+      if (!tpl || !tpl.enabled) return fail(res, "NOT_FOUND", "模板不存在", 404);
+
+      const full = resolveStoragePath(tpl.storage_path);
+      if (!full || !fs.existsSync(full)) return fail(res, "FILE_NOT_FOUND", "模板文件不存在", 404);
+
+      let keys = [];
+      let autoHeaders = [];
+      if (String(tpl.format) === "xlsx") {
+        let XLSX;
+        try {
+          XLSX = require("xlsx");
+        } catch {
+          return fail(res, "DEPENDENCY_MISSING", "缺少依赖 xlsx，请在 server 目录执行：npm install xlsx", 500);
+        }
+        const wb = XLSX.readFile(full);
+        const htmlText = xlsxWorkbookToHtmlText(wb, XLSX);
+        const keysFromCells = extractXlsxFieldKeys(wb, XLSX);
+        const keysFromHtml = extractTemplateFieldKeys(htmlText);
+        keys = Array.from(new Set([...keysFromCells, ...keysFromHtml])).sort();
+        if (!keys.length) {
+          const schema = extractXlsxHeaderSchema(wb, XLSX);
+          if (schema?.headers?.length) {
+            keys = schema.headers;
+            const inferred = [];
+            for (const h of keys) {
+              const v = inferAutoValueByHeader(h, { accountId: "x", name: "x", date: "x" });
+              if (v) inferred.push(h);
+            }
+            autoHeaders = inferred;
+          }
+        }
+      } else {
+        const raw = fs.readFileSync(full, "utf8");
+        keys = extractTemplateFieldKeys(raw);
+      }
+
+      const autoFields = autoHeaders.length ? autoHeaders : CERT_TEMPLATE_AUTO_FIELDS;
+      const manualFields = keys.filter((k) => !autoFields.includes(k));
+      ok(res, { id: String(tpl.id), title: String(tpl.title ?? ""), autoFields, manualFields });
+    } catch (e) {
+      fail(res, "SERVER_ERROR", "服务器异常", 500);
+    }
+  });
+
   app.get("/api/cert/admin/templates", authRequired, adminRequired, async (req, res) => {
     try {
       const resp = await pool.query(
@@ -2193,6 +2475,29 @@ async function main() {
     }
   });
 
+  app.delete("/api/cert/admin/templates/:id", authRequired, adminRequired, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id) return fail(res, "EMPTY_ID", "缺少ID");
+      const resp = await pool.query("SELECT id, storage_path FROM document_templates WHERE id=$1 LIMIT 1", [id]);
+      const row = resp.rows?.[0] || null;
+      if (!row) return fail(res, "NOT_FOUND", "模板不存在", 404);
+
+      await pool.query("DELETE FROM document_templates WHERE id=$1", [id]);
+
+      const storagePath = String(row.storage_path ?? "");
+      const full = resolveStoragePath(storagePath);
+      if (full && fs.existsSync(full)) {
+        try {
+          fs.unlinkSync(full);
+        } catch {}
+      }
+      ok(res, { ok: true });
+    } catch (e) {
+      fail(res, "SERVER_ERROR", "服务器异常", 500);
+    }
+  });
+
   app.get("/api/cert/templates/:id/file", authRequired, async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -2230,33 +2535,88 @@ async function main() {
         "SELECT id, title, format, storage_path, enabled FROM document_templates WHERE id=$1 LIMIT 1",
         [id],
       );
-      const tpl = resp.rows?.[0] || null;
-      if (!tpl || !tpl.enabled) return fail(res, "NOT_FOUND", "模板不存在", 404);
-      if (String(tpl.format) === "xlsx") return fail(res, "NOT_SUPPORTED", "暂不支持 xlsx 自动生成 PDF", 400);
+  const tpl = resp.rows?.[0] || null;
+  if (!tpl || !tpl.enabled) return fail(res, "NOT_FOUND", "模板不存在", 404);
 
       const full = resolveStoragePath(tpl.storage_path);
       if (!full || !fs.existsSync(full)) return fail(res, "FILE_NOT_FOUND", "模板文件不存在", 404);
 
-      const accountId = normalizeAccountId(req.user?.accountId);
-      if (!accountId) return fail(res, "EMPTY_ACCOUNT", "缺少学号");
-      const now = Date.now();
-      await ensurePartyStudentRowExists(pool, accountId, now);
-      const profileResp = await pool.query("SELECT * FROM party_students WHERE account_id=$1 LIMIT 1", [accountId]);
-      const profile = profileResp.rows?.[0] || {};
+      // Resolve accountId: prefer explicit query param, otherwise use session accountId
+      // IMPORTANT: do NOT auto-fill admin's own accountId when they are previewing templates.
+      const queryAccountId = normalizeAccountId(req.query?.accountId);
+      const sessionAccountId = normalizeAccountId(req.user?.accountId);
+      const isAdmin = String(req.user?.role) === 'admin';
 
-      const values = {
-        accountId,
-        name: String(profile.name ?? "") || accountId,
-        college: String(req.query?.college ?? ""),
-        platoon: String(req.query?.platoon ?? ""),
-        reason: String(req.query?.reason ?? ""),
-        proof: String(req.query?.proof ?? ""),
+      // If a specific accountId is provided in query, use it. If not provided and the
+      // requester is an admin, do NOT fall back to the admin's session accountId —
+      // this prevents admins from accidentally previewing templates with their own id filled.
+      // For non-admin users (students), we require a valid session accountId.
+      const accountId = queryAccountId || (isAdmin ? '' : sessionAccountId);
+
+      let profile = {};
+      if (!accountId) {
+        if (!isAdmin) return fail(res, "EMPTY_ACCOUNT", "缺少学号");
+        // admin preview without accountId: leave profile empty and don't create student row
+      } else {
+        const now = Date.now();
+        await ensurePartyStudentRowExists(pool, accountId, now);
+        const profileResp = await pool.query("SELECT * FROM party_students WHERE account_id=$1 LIMIT 1", [accountId]);
+        profile = profileResp.rows?.[0] || {};
+      }
+
+      const baseValues = {
+        accountId: accountId || '',
+        name: String(profile.name ?? "") || (accountId || ''),
         date: toYmd(new Date()),
       };
 
-      const raw = fs.readFileSync(full, "utf8");
-      const rendered = renderTemplateText(raw, values);
-      const html = wrapHtml(rendered);
+      // Build HTML depending on template format. For xlsx templates, convert sheets to HTML using SheetJS.
+      let html;
+      if (String(tpl.format) === 'xlsx') {
+        let XLSX;
+        try {
+          XLSX = require('xlsx');
+        } catch (e) {
+          return fail(res, 'DEPENDENCY_MISSING', '缺少依赖 xlsx，请在 server 目录执行：npm install xlsx', 500);
+        }
+
+        try {
+          const wb = XLSX.readFile(full);
+          const keysFromCells = extractXlsxFieldKeys(wb, XLSX);
+          if (keysFromCells.length) {
+            const values = buildCertTemplateValues({ baseValues, query: req.query, fieldKeys: keysFromCells });
+            fillXlsxWorkbookPlaceholders(wb, values);
+          } else {
+            const schema = extractXlsxHeaderSchema(wb, XLSX);
+            const headers = Array.isArray(schema?.headers) ? schema.headers : [];
+            const values = buildCertTemplateValues({ baseValues, query: req.query, fieldKeys: headers });
+            for (const h of headers) {
+              if (String(values[h] ?? "")) continue;
+              const inferred = inferAutoValueByHeader(h, baseValues);
+              if (inferred) values[h] = inferred;
+            }
+            for (const h of headers) {
+              const hh = String(h ?? "").trim();
+              if (!hh) continue;
+              if (hh === "序号" || hh === "编号") {
+                if (!String(values[h] ?? "")) values[h] = "1";
+              }
+            }
+            fillXlsxWorkbookByHeaderSchema(wb, XLSX, schema, values);
+          }
+          const combined = xlsxWorkbookToHtmlText(wb, XLSX);
+          html = wrapHtml(combined);
+        } catch (e) {
+          const msg = String(e?.message || e || '转换 xlsx 失败');
+          return fail(res, 'XLSX_RENDER_FAILED', `XLSX 转换失败：${msg}`, 500);
+        }
+      } else {
+        const raw = fs.readFileSync(full, "utf8");
+        const fieldKeys = extractTemplateFieldKeys(raw);
+        const values = buildCertTemplateValues({ baseValues, query: req.query, fieldKeys });
+        const rendered = renderTemplateText(raw, values);
+        html = wrapHtml(rendered);
+      }
 
       let puppeteer;
       try {
