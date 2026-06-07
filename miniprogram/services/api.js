@@ -359,6 +359,15 @@ const featureApi = {
       auth: true,
     });
   },
+  async certTemplateFields({ id }) {
+    const normalizedId = String(id ?? "").trim();
+    return await request({
+      method: "GET",
+      path: `/api/cert/templates/${encodeURIComponent(normalizedId)}/fields`,
+      data: {},
+      auth: true,
+    });
+  },
   async certAdminTemplateList() {
     return await request({
       method: "GET",

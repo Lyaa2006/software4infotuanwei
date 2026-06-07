@@ -8,6 +8,14 @@ function formatYmd(ymd) {
   return s;
 }
 
+function isValidYmd(ymd) {
+  const s = formatYmd(ymd);
+  if (!s) return false;
+  const [y, m, d] = s.split("-").map((x) => Number(x));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d;
+}
+
 function formatDateTime(ts) {
   const n = Number(ts || 0);
   if (!n) return "";
@@ -326,8 +334,8 @@ Page({
       return;
     }
     const date = String(this.data.formDate || "").trim();
-    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      wx.showToast({ title: "日期格式应为 YYYY-MM-DD", icon: "none" });
+    if (date && !isValidYmd(date)) {
+      wx.showToast({ title: "日期无效", icon: "none" });
       return;
     }
 

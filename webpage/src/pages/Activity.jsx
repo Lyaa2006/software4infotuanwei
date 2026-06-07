@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
 function pad2(n) { return String(n).padStart(2, '0') }
@@ -6,6 +7,13 @@ function formatYmd(ymd) {
   const s = String(ymd ?? '').trim()
   if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(s)) return ''
   return s
+}
+function isValidYmd(ymd) {
+  const s = formatYmd(ymd)
+  if (!s) return false
+  const [y, m, d] = s.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d
 }
 function formatDateTime(ts) {
   const n = Number(ts || 0)
@@ -41,6 +49,7 @@ function parseIds(text) {
 }
 
 export default function Activity() {
+  const navigate = useNavigate()
   const [isAdmin, setIsAdmin] = useState(false)
   const [isStudent, setIsStudent] = useState(false)
   const [isCadre, setIsCadre] = useState(false)
@@ -177,6 +186,7 @@ export default function Activity() {
 
   async function uploadPhotos(files) {
     if (!files || !files.length) return
+    // allow uploads — previously disabled with a "敬请期待" alert
     const apiSvc = api
     const baseUrl = apiSvc.getBaseUrl()
     const outPaths = []
@@ -210,7 +220,7 @@ export default function Activity() {
     const title = String(formTitle || '').trim()
     if (!title) return alert('请填写标题')
     const date = String(formDate || '').trim()
-    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return alert('日期格式应为 YYYY-MM-DD')
+    if (date && !isValidYmd(date)) return alert('日期格式错误或日期无效，应为真实的 YYYY-MM-DD')
     setSaving(true)
     try {
       const participants = { organizers: parseIds(formOrganizers), participants: parseIds(formParticipants), helpers: parseIds(formHelpers) }
@@ -288,14 +298,13 @@ export default function Activity() {
 
   return (
     <div className="container">
+      <div className="page-toolbar">
       <h2>班团活动管理</h2>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => navigate('/')}>返回首页</button>
+      </div>
 
-      <div className="card">
+      {isStudent && <div className="card">
         <h3>我的活动</h3>
-        <div style={{ marginBottom: 8 }}>
-          <label className="btn">上传活动照片<input type="file" style={{ display: 'none' }} multiple onChange={(e) => uploadPhotos(e.target.files)} /></label>
-          <span style={{ marginLeft: 8 }}>{uploading ? '上传中...' : ''}</span>
-        </div>
         <ul style={{ listStyle: 'none', padding: 0 }}>
           {myItems.map((i) => (
             <li key={i._id || i.id} style={{ padding: 8, borderBottom: '1px solid #f0f0f0' }}>
@@ -311,7 +320,7 @@ export default function Activity() {
             </li>
           ))}
         </ul>
-      </div>
+      </div>}
 
       {isStudent && (
         <div className="card" style={{ marginTop: 12 }}>
@@ -400,7 +409,7 @@ export default function Activity() {
           <input className="input" placeholder="协助者（逗号或换行分隔）" value={formHelpers} onChange={(e) => setFormHelpers(e.target.value)} />
         </div>
         <div style={{ marginBottom: 8 }}>
-          <label className="btn">选择照片<input type="file" style={{ display: 'none' }} multiple onChange={(e) => uploadPhotos(e.target.files)} /></label>
+          <label className="btn">选择照片<input type="file" style={{ display: 'none' }} multiple onChange={(e) => { uploadPhotos(e.target.files); e.target.value = '' }} /></label>
           <button className="btn" style={{ marginLeft: 8 }} onClick={onClearPhotos}>清除照片</button>
         </div>
         <div style={{ marginTop: 8 }}>{formPhotos.map((u) => <img key={u} src={u} alt="p" style={{ maxWidth: 120, marginLeft: 8 }} />)}</div>

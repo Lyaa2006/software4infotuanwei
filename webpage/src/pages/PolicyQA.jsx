@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
 export default function PolicyQA() {
+  const navigate = useNavigate()
   const [answer, setAnswer] = useState('')
   const [question, setQuestion] = useState('')
 
@@ -91,13 +93,16 @@ export default function PolicyQA() {
 
   return (
     <div className="container">
+      <div className="page-toolbar">
       <h2>智能问答</h2>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => navigate('/')}>返回首页</button>
+      </div>
       <div className="card">
         <input className="input" value={question} onChange={e => setQuestion(e.target.value)} placeholder="输入问题" />
         <div style={{ marginTop: 8 }}>
           <button className="btn" onClick={ask}>提问</button>
         </div>
-        <pre style={{ marginTop: 12 }}>{answer}</pre>
+        <div className="text-block" style={{ marginTop: 12 }}>{answer}</div>
       </div>
 
       {isAdmin && <div className="card" style={{ marginTop: 12 }}>
@@ -107,7 +112,7 @@ export default function PolicyQA() {
           <ul style={{ marginTop: 8 }}>{items.map(it => (
             <li key={it._id || it.id} style={{ padding: '6px 0', borderBottom: '1px solid #f5f5f5' }}>
               <div style={{ fontWeight: 600 }}>{it.question}</div>
-              <div style={{ color: '#666', marginTop: 6 }}>{it.answer}</div>
+              <div className="text-block muted" style={{ marginTop: 6 }}>{it.answer}</div>
               <div style={{ marginTop: 6 }}>
                 <button className="btn" onClick={() => onEdit(it)}>编辑</button>
                 <button className="btn" style={{ marginLeft: 8 }} onClick={() => onDelete(it._id || it.id)}>删除</button>

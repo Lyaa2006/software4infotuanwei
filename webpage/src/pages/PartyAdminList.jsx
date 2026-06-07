@@ -11,7 +11,10 @@ export default function PartyAdminList() {
 
   return (
     <div className="container">
+      <div className="page-toolbar">
       <h2>学生列表（管理员）</h2>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => nav('/')}>返回首页</button>
+      </div>
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div>共 {items.length} 位学生</div>

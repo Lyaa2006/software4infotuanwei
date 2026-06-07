@@ -31,3 +31,10 @@ project.private.config.json
 
 server/uploads/
 server/uploads/**
+
+
+data/
+
+docs/网页端更新指南
+
+help/

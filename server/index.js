@@ -21,7 +21,7 @@ const PG_DATE_OID = 1082;
 types.setTypeParser(PG_DATE_OID, (value) => String(value ?? ""));
 
 const PARTY_STAGES = [
-  { value: "group_assessment", label: "通过党课学习小组考核", status: "党课学习小组考核中" },
+  { value: "group_assessment", label: "党课学习小组学习", status: "党课学习小组学习中" },
   { value: "activist", label: "入党积极分子", status: "入党积极分子培养中" },
   { value: "dev_object", label: "发展对象（通过院党校推优）", status: "校党校学习中" },
   { value: "probationary", label: "预备党员", status: "预备党员培养中" },
@@ -278,9 +278,235 @@ async function ensureSeedDocumentTemplates(pool) {
 function renderTemplateText(raw, values) {
   let out = String(raw ?? "");
   for (const [k, v] of Object.entries(values || {})) {
-    out = out.replace(new RegExp(`\\{\\{\\s*${k}\\s*\\}\\}`, "g"), String(v ?? ""));
+    const key = String(k ?? "");
+    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`, "g"), String(v ?? ""));
   }
   return out;
+}
+
+const CERT_TEMPLATE_AUTO_FIELDS = ["accountId", "name", "date"];
+
+function normalizeTemplatePlaceholdersText(raw) {
+  return String(raw ?? "")
+    .replace(/[｛]/g, "{")
+    .replace(/[｝]/g, "}")
+    .replace(/&amp;#123;|&#123;|&lbrace;|&lcub;|&#x7b;|&#X7B;/g, "{")
+    .replace(/&amp;#125;|&#125;|&rbrace;|&rcub;|&#x7d;|&#X7D;/g, "}");
+}
+
+function extractTemplateFieldKeys(raw) {
+  const s = normalizeTemplatePlaceholdersText(raw);
+  const re = /\{\{\s*([^{}\s][^{}]{0,63}?)\s*\}\}/g;
+  const set = new Set();
+  let m;
+  while ((m = re.exec(s))) {
+    const key = String(m[1] ?? "").trim();
+    if (!key) continue;
+    if (key.length > 64) continue;
+    if (/\s/.test(key)) continue;
+    set.add(key);
+  }
+  return Array.from(set).sort();
+}
+
+function buildCertTemplateValues({ baseValues, query, fieldKeys }) {
+  const values = { ...(baseValues || {}) };
+  const q = query || {};
+  const keys = Array.isArray(fieldKeys) ? fieldKeys : [];
+  for (const k of keys) {
+    if (CERT_TEMPLATE_AUTO_FIELDS.includes(k)) continue;
+    values[k] = String(q?.[k] ?? "");
+  }
+  return values;
+}
+
+function xlsxWorkbookToHtmlText(wb, XLSX) {
+  const parts = [];
+  const names = Array.isArray(wb?.SheetNames) ? wb.SheetNames : [];
+  for (const n of names) {
+    const sh = wb?.Sheets ? wb.Sheets[n] : null;
+    if (!sh || typeof sh !== "object") continue;
+
+    const cellKeys = Object.keys(sh).filter((k) => k && k[0] !== "!");
+    if (!cellKeys.length) {
+      parts.push("<table></table>");
+      continue;
+    }
+
+    if (typeof sh["!ref"] !== "string" || !sh["!ref"]) {
+      let minR = Infinity;
+      let minC = Infinity;
+      let maxR = 0;
+      let maxC = 0;
+      for (const addr of cellKeys) {
+        try {
+          const dc = XLSX.utils.decode_cell(addr);
+          minR = Math.min(minR, dc.r);
+          minC = Math.min(minC, dc.c);
+          maxR = Math.max(maxR, dc.r);
+          maxC = Math.max(maxC, dc.c);
+        } catch {}
+      }
+      if (Number.isFinite(minR) && Number.isFinite(minC)) {
+        sh["!ref"] = XLSX.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
+      } else {
+        sh["!ref"] = "A1:A1";
+      }
+    }
+
+    const sheetHtml = XLSX.utils.sheet_to_html(sh, { header: "", footer: "" });
+    parts.push(sheetHtml);
+  }
+  return parts.join("<hr/>");
+}
+
+function getXlsxCellText(cell) {
+  const c = cell && typeof cell === "object" ? cell : null;
+  if (!c) return "";
+  if (typeof c.w === "string" && c.w) return c.w;
+  if (typeof c.v === "string" && c.v) return c.v;
+  if (typeof c.v === "number" || typeof c.v === "boolean") return String(c.v);
+  if (c.v && typeof c.v === "object") {
+    const rich = Array.isArray(c.v.richText) ? c.v.richText : null;
+    if (rich) return rich.map((x) => String(x?.t ?? "")).join("");
+  }
+  return "";
+}
+
+function extractXlsxFieldKeys(wb, XLSX) {
+  const set = new Set();
+  const names = Array.isArray(wb?.SheetNames) ? wb.SheetNames : [];
+  for (const n of names) {
+    const sh = wb?.Sheets ? wb.Sheets[n] : null;
+    if (!sh || typeof sh !== "object") continue;
+    const cellKeys = Object.keys(sh).filter((k) => k && k[0] !== "!");
+    for (const addr of cellKeys) {
+      const cell = sh[addr];
+      if (!cell || typeof cell !== "object") continue;
+      const text = normalizeTemplatePlaceholdersText(getXlsxCellText(cell));
+      if (!text) continue;
+      const keys = extractTemplateFieldKeys(text);
+      for (const k of keys) set.add(k);
+    }
+  }
+  return Array.from(set).sort();
+}
+
+function fillXlsxWorkbookPlaceholders(wb, values) {
+  const names = Array.isArray(wb?.SheetNames) ? wb.SheetNames : [];
+  for (const n of names) {
+    const sh = wb?.Sheets ? wb.Sheets[n] : null;
+    if (!sh || typeof sh !== "object") continue;
+    const cellKeys = Object.keys(sh).filter((k) => k && k[0] !== "!");
+    for (const addr of cellKeys) {
+      const cell = sh[addr];
+      if (!cell || typeof cell !== "object") continue;
+      if (cell.f) continue;
+      const raw = normalizeTemplatePlaceholdersText(getXlsxCellText(cell));
+      if (!raw) continue;
+      if (!raw.includes("{{")) continue;
+      const rendered = renderTemplateText(raw, values);
+      if (rendered === raw) continue;
+      cell.t = "s";
+      cell.v = rendered;
+      cell.w = rendered;
+      delete cell.r;
+      delete cell.h;
+    }
+  }
+}
+
+function inferAutoValueByHeader(header, baseValues) {
+  const h = String(header ?? "").trim();
+  if (!h) return "";
+  const name = String(baseValues?.name ?? "");
+  const accountId = String(baseValues?.accountId ?? "");
+  const date = String(baseValues?.date ?? "");
+  if (!name && !accountId && !date) return "";
+
+  if (h.includes("学号") || h.includes("工号") || h.includes("账号")) return accountId;
+  if (h === "姓名" || h.includes("负责人") || h.includes("申请人") || h.includes("学生姓名")) return name;
+  if (h.includes("日期")) return date;
+  if (h === "月份" && date) return date.slice(0, 7);
+  return "";
+}
+
+function ensureSheetRef(sh, XLSX) {
+  if (sh && typeof sh === "object" && typeof sh["!ref"] === "string" && sh["!ref"]) return;
+  const sheet = sh && typeof sh === "object" ? sh : null;
+  if (!sheet) return;
+  const cellKeys = Object.keys(sheet).filter((k) => k && k[0] !== "!");
+  if (!cellKeys.length) {
+    sheet["!ref"] = "A1:A1";
+    return;
+  }
+  let minR = Infinity;
+  let minC = Infinity;
+  let maxR = 0;
+  let maxC = 0;
+  for (const addr of cellKeys) {
+    try {
+      const dc = XLSX.utils.decode_cell(addr);
+      minR = Math.min(minR, dc.r);
+      minC = Math.min(minC, dc.c);
+      maxR = Math.max(maxR, dc.r);
+      maxC = Math.max(maxC, dc.c);
+    } catch {}
+  }
+  if (Number.isFinite(minR) && Number.isFinite(minC)) {
+    sheet["!ref"] = XLSX.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
+  } else {
+    sheet["!ref"] = "A1:A1";
+  }
+}
+
+function extractXlsxHeaderSchema(wb, XLSX) {
+  const names = Array.isArray(wb?.SheetNames) ? wb.SheetNames : [];
+  for (const n of names) {
+    const sh = wb?.Sheets ? wb.Sheets[n] : null;
+    if (!sh || typeof sh !== "object") continue;
+    ensureSheetRef(sh, XLSX);
+    const range = XLSX.utils.decode_range(String(sh["!ref"] || "A1:A1"));
+    const maxScanRows = Math.min(range.e.r, range.s.r + 50);
+    for (let r = range.s.r; r <= maxScanRows; r++) {
+      const cols = [];
+      let nonEmpty = 0;
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = sh[addr];
+        const text = normalizeTemplatePlaceholdersText(getXlsxCellText(cell)).trim();
+        cols.push({ c, text });
+        if (text) nonEmpty++;
+      }
+      if (nonEmpty >= 2) {
+        const headers = cols.map((x) => x.text).filter((x) => !!x);
+        const uniqueHeaders = Array.from(new Set(headers));
+        return { sheetName: n, headerRow: r, headers: uniqueHeaders, columns: cols.filter((x) => !!x.text) };
+      }
+    }
+  }
+  return null;
+}
+
+function fillXlsxWorkbookByHeaderSchema(wb, XLSX, schema, values) {
+  const s = schema && typeof schema === "object" ? schema : null;
+  if (!s?.sheetName || typeof s.headerRow !== "number") return;
+  const sh = wb?.Sheets ? wb.Sheets[s.sheetName] : null;
+  if (!sh || typeof sh !== "object") return;
+  const targetRow = s.headerRow + 1;
+  for (const col of Array.isArray(s.columns) ? s.columns : []) {
+    const header = String(col?.text ?? "").trim();
+    if (!header) continue;
+    const v = String(values?.[header] ?? "");
+    if (!v) continue;
+    const addr = XLSX.utils.encode_cell({ r: targetRow, c: Number(col.c || 0) });
+    sh[addr] = { t: "s", v, w: v };
+  }
+  ensureSheetRef(sh, XLSX);
+  const r = XLSX.utils.decode_range(String(sh["!ref"] || "A1:A1"));
+  r.e.r = Math.max(r.e.r, targetRow);
+  sh["!ref"] = XLSX.utils.encode_range(r);
 }
 
 function htmlToText(html) {
@@ -441,6 +667,14 @@ function normalizeYmdInput(value) {
   const s = String(value ?? "").trim();
   if (!s) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, m, d] = s.split("-").map((x) => Number(x));
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  if (
+    dt.getUTCFullYear() !== y
+    || dt.getUTCMonth() + 1 !== m
+    || dt.getUTCDate() !== d
+  ) return null;
   return s;
 }
 
@@ -449,6 +683,51 @@ function normalizeAssetPath(value) {
   if (!s) return "";
   if (/^https?:\/\//i.test(s)) return s;
   return `/${s.replace(/^\/+/, "")}`;
+function hasInvalidYmdInput(value) {
+  const raw = String(value ?? "").trim();
+  return !!raw && !normalizeYmdInput(raw);
+}
+
+function localTodayYmd() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return y + '-' + m + '-' + day;
+}
+
+function validatePartyDateOrder(dates) {
+  const pairs = [
+    ["入党申请时间", dates.applicationDate],
+    ["确定为入党积极分子时间", dates.activistDate],
+    ["确定为发展对象时间", dates.devObjectDate],
+    ["接收为预备党员时间", dates.probationaryDate],
+    ["预备期满一年时间", dates.probationaryFullYearDate],
+    ["转为正式党员时间", dates.fullMemberDate],
+  ].filter(([, value]) => !!value);
+  for (let i = 1; i < pairs.length; i += 1) {
+    const [prevLabel, prevValue] = pairs[i - 1];
+    const [currLabel, currValue] = pairs[i];
+    if (prevValue > currValue) {
+      return `${currLabel}不能早于${prevLabel}`;
+    }
+  }
+  return "";
+}
+
+function validatePartyHistoricalDatesNotFuture(dates, todayYmd) {
+  const pairs = [
+    ['入党申请时间', dates.applicationDate],
+    ['确定为入党积极分子时间', dates.activistDate],
+    ['确定为发展对象时间', dates.devObjectDate],
+    ['接收为预备党员时间', dates.probationaryDate],
+    ['预备期满一年时间', dates.probationaryFullYearDate],
+    ['转为正式党员时间', dates.fullMemberDate],
+  ].filter(([, value]) => !!value);
+  for (const [label, value] of pairs) {
+    if (todayYmd && value > todayYmd) return label + '不能设置为未来日期';
+  }
+  return "";
 }
 
 function safeFileBaseName(name) {
@@ -802,6 +1081,98 @@ function buildTranscriptParseSummary({ sourceFormat, courses }) {
   };
 }
 
+function ensurePdfParseRuntimeCompat() {
+  if (typeof process.getBuiltinModule !== "function") {
+    try {
+      Object.defineProperty(process, "getBuiltinModule", {
+        value: require,
+        configurable: true,
+        writable: true,
+      });
+    } catch {
+      process.getBuiltinModule = require;
+    }
+  }
+
+  if (typeof globalThis.DOMMatrix === "undefined") {
+    try {
+      globalThis.DOMMatrix = require("dommatrix");
+    } catch {
+      // pdfjs-dist will raise a clearer load error below if this dependency is unavailable.
+    }
+  }
+}
+
+function normalizeCourseSearchText(value) {
+  const raw = String(value ?? "");
+  const normalized = typeof raw.normalize === "function" ? raw.normalize("NFKC") : raw;
+  return normalized.replace(/\u3000/g, " ").toLowerCase();
+}
+
+function compactCourseSearchText(value) {
+  return normalizeCourseSearchText(value).replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function buildPdfCourseSearchIndex(text) {
+  const lower = normalizeCourseSearchText(text).replace(/\s+/g, " ").trim();
+  return {
+    lower,
+    compact: compactCourseSearchText(text),
+  };
+}
+
+function isCourseTokenInPdfText(searchIndex, value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return false;
+  const lower = normalizeCourseSearchText(raw).replace(/\s+/g, " ").trim();
+  const compact = compactCourseSearchText(raw);
+  if (compact.length < 2) return false;
+  if (lower.length >= 2 && searchIndex.lower.includes(lower)) return true;
+  return searchIndex.compact.includes(compact);
+}
+
+function extractPlanCoursesForPdfMatch(plan) {
+  const modules = Array.isArray(plan?.modules) ? plan.modules : [];
+  const seen = new Set();
+  const out = [];
+
+  for (const mod of modules) {
+    const courses = Array.isArray(mod?.courses) ? mod.courses : [];
+    for (const c of courses) {
+      const code = normalizeCourseCode(c?.code);
+      const name = normalizeCourseName(c?.name);
+      const credits = Number(c?.credits || 0);
+      if (!code && !name) continue;
+      const key = [code, name].join("::");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ code, name, credits });
+    }
+  }
+
+  return out;
+}
+
+function matchTranscriptCoursesFromPlanPdfText({ plan, text }) {
+  const searchIndex = buildPdfCourseSearchIndex(text);
+  const matched = [];
+
+  for (const course of extractPlanCoursesForPdfMatch(plan)) {
+    const foundByName = course.name && isCourseTokenInPdfText(searchIndex, course.name);
+    const foundByCode = course.code && isCourseTokenInPdfText(searchIndex, course.code);
+    if (!foundByName && !foundByCode) continue;
+
+    matched.push(buildTranscriptCourse({
+      code: course.code,
+      name: course.name,
+      credits: course.credits,
+      grade: "通过",
+    }));
+  }
+
+  return dedupeTranscriptCourses(matched);
+}
+
 function extractHtmlTableRows(html) {
   const raw = String(html ?? "");
   const cleaned = raw
@@ -884,21 +1255,53 @@ async function parseTranscriptFile({ filename, mime, buffer }) {
   if (isPdfFile) {
     let PDFParse;
     try {
+      ensurePdfParseRuntimeCompat();
       ({ PDFParse } = require("pdf-parse"));
     } catch {
-      const err = new Error("暂不支持PDF解析，请导出HTML或CSV成绩单后再上传");
+      const err = new Error("PDF解析依赖加载失败，请在 server 目录执行 npm install，或将 Node.js 升级到 20.16+/22.3+");
       err.code = "PDF_PARSE_UNSUPPORTED";
       throw err;
     }
-    const parser = new PDFParse({ data: buffer });
-    const parsed = await parser.getText();
-    await parser.destroy().catch(() => {});
-    const text = String(parsed?.text ?? "");
-    return { format: "pdf", courses: parseTranscriptFromPdfText(text) };
+    let parser;
+    try {
+      parser = new PDFParse({ data: buffer });
+      const parsed = await parser.getText();
+      const text = String(parsed?.text ?? "");
+      return { format: "pdf", courses: parseTranscriptFromPdfText(text), text };
+    } catch (e) {
+      const err = new Error("PDF解析失败：" + String(e?.message || "无法读取文本"));
+      err.code = "PDF_PARSE_FAILED";
+      throw err;
+    } finally {
+      if (parser) await parser.destroy().catch(() => {});
+    }
   }
   const err = new Error("不支持的文件类型：请上传 HTML / CSV / TXT / PDF");
   err.code = "UNSUPPORTED_FILE";
   throw err;
+}
+
+function normalizeHeaderCell(value) {
+  return String(value ?? "").replace(/\s+/g, "").toLowerCase();
+}
+
+function findHeaderIndex(header, exactLabels, fallbackPattern) {
+  const list = Array.isArray(header) ? header : [];
+  const normalizedLabels = (Array.isArray(exactLabels) ? exactLabels : []).map((label) => normalizeHeaderCell(label));
+  const exactIdx = list.findIndex((item) => normalizedLabels.includes(normalizeHeaderCell(item)));
+  if (exactIdx >= 0) return exactIdx;
+  if (fallbackPattern) return list.findIndex((item) => fallbackPattern.test(String(item ?? "")));
+  return -1;
+}
+
+function getTrainingPlanHeaderIndexes(header) {
+  return {
+    idxModule: findHeaderIndex(header, ["模块名称", "模块", "课程类别", "module"], /模块名称|课程类别|^模块$|module/i),
+    idxReq: findHeaderIndex(header, ["模块学分", "要求学分", "required credits", "required"], /模块学分|要求学分|required/i),
+    idxCode: findHeaderIndex(header, ["课程代码", "代码", "course code"], /课程代码|代码|course\s*code/i),
+    idxName: findHeaderIndex(header, ["课程名称", "课程名", "course name"], /课程名称|课程名|course\s*name/i),
+    idxCredits: findHeaderIndex(header, ["学分", "credit", "credits"], /^学分$|^credits?$/i),
+  };
 }
 
 function parseTrainingPlanFromCsvText(text) {
@@ -910,11 +1313,7 @@ function parseTrainingPlanFromCsvText(text) {
   if (!lines.length) return [];
 
   const header = splitCsvLine(lines[0]);
-  const idxModule = header.findIndex((h) => /模块|模块名称|module/i.test(h));
-  const idxReq = header.findIndex((h) => /模块学分|要求学分|required/i.test(h));
-  const idxCode = header.findIndex((h) => /代码|课程代码|course\s*code/i.test(h));
-  const idxName = header.findIndex((h) => /课程名称|课程名|名称|course\s*name/i.test(h));
-  const idxCredits = header.findIndex((h) => /学分|credit/i.test(h));
+  const { idxModule, idxReq, idxCode, idxName, idxCredits } = getTrainingPlanHeaderIndexes(header);
 
   const modMap = new Map();
   for (let i = 1; i < lines.length; i += 1) {
@@ -965,11 +1364,7 @@ function parseTrainingPlanFromHtml(html) {
   }
   if (headerRowIndex < 0) headerRowIndex = 0;
   const header = rows[headerRowIndex] || [];
-  const idxModule = header.findIndex((h) => /模块|模块名称|module/i.test(h));
-  const idxReq = header.findIndex((h) => /模块学分|要求学分|required/i.test(h));
-  const idxCode = header.findIndex((h) => /代码|课程代码|course\s*code/i.test(h));
-  const idxName = header.findIndex((h) => /课程名称|课程名|名称|course\s*name/i.test(h));
-  const idxCredits = header.findIndex((h) => /学分|credit/i.test(h));
+  const { idxModule, idxReq, idxCode, idxName, idxCredits } = getTrainingPlanHeaderIndexes(header);
 
   const modMap = new Map();
   for (let i = headerRowIndex + 1; i < rows.length; i += 1) {
@@ -1178,7 +1573,11 @@ function hasTag(tags, tagValue) {
 
 function toYmd(value) {
   if (!value) return "";
-  if (typeof value === "string") return value.slice(0, 10);
+  if (typeof value === "string") {
+    const s = value.trim();
+    const match = s.match(/^(\d{4}-\d{2}-\d{2})(?:$|[T\s])/);
+    return match ? match[1] : "";
+  }
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return "";
   const y = d.getUTCFullYear();
@@ -1622,8 +2021,10 @@ async function main() {
       const row = resp.rows?.[0] || null;
       if (!row) return fail(res, "NOT_FOUND", "学生信息不存在", 404);
 
+      // ensure today's YMD string is available for fallback calculations
+      const today = localTodayYmd();
+
       const mapped = mapPartyStudentRow(row);
-      const today = toYmd(new Date());
       const fallbackReport =
         mapped.nextReportDue || (mapped.activistDate ? nextDueFromStart({ startYmd: mapped.activistDate, periodMonths: 3, nowYmd: today }) : "");
       const fallbackTalk =
@@ -1708,6 +2109,32 @@ async function main() {
       const probationaryDate = normalizeYmdInput(req.body?.probationaryDate);
       const probationaryFullYearDate = normalizeYmdInput(req.body?.probationaryFullYearDate);
       const fullMemberDate = normalizeYmdInput(req.body?.fullMemberDate);
+      if (hasInvalidYmdInput(req.body?.applicationDate)) return fail(res, "INVALID_DATE", "入党申请时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (hasInvalidYmdInput(req.body?.activistDate)) return fail(res, "INVALID_DATE", "确定为入党积极分子时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (hasInvalidYmdInput(req.body?.devObjectDate)) return fail(res, "INVALID_DATE", "确定为发展对象时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (hasInvalidYmdInput(req.body?.probationaryDate)) return fail(res, "INVALID_DATE", "接收为预备党员时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (hasInvalidYmdInput(req.body?.probationaryFullYearDate)) return fail(res, "INVALID_DATE", "预备期满一年时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (hasInvalidYmdInput(req.body?.fullMemberDate)) return fail(res, "INVALID_DATE", "转为正式党员时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      const today = localTodayYmd();
+      const futureDateError = validatePartyHistoricalDatesNotFuture({
+        applicationDate,
+        activistDate,
+        devObjectDate,
+        probationaryDate,
+        probationaryFullYearDate,
+        fullMemberDate,
+      }, today);
+      if (futureDateError) return fail(res, 'FUTURE_PARTY_DATE', futureDateError);
+
+      const dateOrderError = validatePartyDateOrder({
+        applicationDate,
+        activistDate,
+        devObjectDate,
+        probationaryDate,
+        probationaryFullYearDate,
+        fullMemberDate,
+      });
+      if (dateOrderError) return fail(res, "INVALID_DATE_ORDER", dateOrderError);
 
       const computedStage = partyStageFromDates({
         activist_date: activistDate,
@@ -1723,7 +2150,6 @@ async function main() {
       const providedStatus = String(req.body?.currentStatus ?? "").trim();
       const currentStatus = providedStatus || partyStageStatus(finalStage);
 
-      const today = toYmd(new Date());
       const hasNextReportDue = Object.prototype.hasOwnProperty.call(req.body || {}, "nextReportDue");
       const hasNextTalkDue = Object.prototype.hasOwnProperty.call(req.body || {}, "nextTalkDue");
       const nextReportDueRaw = hasNextReportDue ? normalizeYmdInput(req.body?.nextReportDue) : undefined;
@@ -2056,6 +2482,59 @@ async function main() {
     }
   });
 
+  app.get("/api/cert/templates/:id/fields", authRequired, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id) return fail(res, "EMPTY_ID", "缺少ID");
+      const resp = await pool.query(
+        "SELECT id, title, format, storage_path, enabled FROM document_templates WHERE id=$1 LIMIT 1",
+        [id],
+      );
+      const tpl = resp.rows?.[0] || null;
+      if (!tpl || !tpl.enabled) return fail(res, "NOT_FOUND", "模板不存在", 404);
+
+      const full = resolveStoragePath(tpl.storage_path);
+      if (!full || !fs.existsSync(full)) return fail(res, "FILE_NOT_FOUND", "模板文件不存在", 404);
+
+      let keys = [];
+      let autoHeaders = [];
+      if (String(tpl.format) === "xlsx") {
+        let XLSX;
+        try {
+          XLSX = require("xlsx");
+        } catch {
+          return fail(res, "DEPENDENCY_MISSING", "缺少依赖 xlsx，请在 server 目录执行：npm install xlsx", 500);
+        }
+        const wb = XLSX.readFile(full);
+        const htmlText = xlsxWorkbookToHtmlText(wb, XLSX);
+        const keysFromCells = extractXlsxFieldKeys(wb, XLSX);
+        const keysFromHtml = extractTemplateFieldKeys(htmlText);
+        keys = Array.from(new Set([...keysFromCells, ...keysFromHtml])).sort();
+        if (!keys.length) {
+          const schema = extractXlsxHeaderSchema(wb, XLSX);
+          if (schema?.headers?.length) {
+            keys = schema.headers;
+            const inferred = [];
+            for (const h of keys) {
+              const v = inferAutoValueByHeader(h, { accountId: "x", name: "x", date: "x" });
+              if (v) inferred.push(h);
+            }
+            autoHeaders = inferred;
+          }
+        }
+      } else {
+        const raw = fs.readFileSync(full, "utf8");
+        keys = extractTemplateFieldKeys(raw);
+      }
+
+      const autoFields = autoHeaders.length ? autoHeaders : CERT_TEMPLATE_AUTO_FIELDS;
+      const manualFields = keys.filter((k) => !autoFields.includes(k));
+      ok(res, { id: String(tpl.id), title: String(tpl.title ?? ""), autoFields, manualFields });
+    } catch (e) {
+      fail(res, "SERVER_ERROR", "服务器异常", 500);
+    }
+  });
+
   app.get("/api/cert/admin/templates", authRequired, adminRequired, async (req, res) => {
     try {
       const resp = await pool.query(
@@ -2194,33 +2673,88 @@ async function main() {
         "SELECT id, title, format, storage_path, enabled FROM document_templates WHERE id=$1 LIMIT 1",
         [id],
       );
-      const tpl = resp.rows?.[0] || null;
-      if (!tpl || !tpl.enabled) return fail(res, "NOT_FOUND", "模板不存在", 404);
-      if (String(tpl.format) === "xlsx") return fail(res, "NOT_SUPPORTED", "暂不支持 xlsx 自动生成 PDF", 400);
+  const tpl = resp.rows?.[0] || null;
+  if (!tpl || !tpl.enabled) return fail(res, "NOT_FOUND", "模板不存在", 404);
 
       const full = resolveStoragePath(tpl.storage_path);
       if (!full || !fs.existsSync(full)) return fail(res, "FILE_NOT_FOUND", "模板文件不存在", 404);
 
-      const accountId = normalizeAccountId(req.user?.accountId);
-      if (!accountId) return fail(res, "EMPTY_ACCOUNT", "缺少学号");
-      const now = Date.now();
-      await ensurePartyStudentRowExists(pool, accountId, now);
-      const profileResp = await pool.query("SELECT * FROM party_students WHERE account_id=$1 LIMIT 1", [accountId]);
-      const profile = profileResp.rows?.[0] || {};
+      // Resolve accountId: prefer explicit query param, otherwise use session accountId
+      // IMPORTANT: do NOT auto-fill admin's own accountId when they are previewing templates.
+      const queryAccountId = normalizeAccountId(req.query?.accountId);
+      const sessionAccountId = normalizeAccountId(req.user?.accountId);
+      const isAdmin = String(req.user?.role) === 'admin';
 
-      const values = {
-        accountId,
-        name: String(profile.name ?? "") || accountId,
-        college: String(req.query?.college ?? ""),
-        platoon: String(req.query?.platoon ?? ""),
-        reason: String(req.query?.reason ?? ""),
-        proof: String(req.query?.proof ?? ""),
+      // If a specific accountId is provided in query, use it. If not provided and the
+      // requester is an admin, do NOT fall back to the admin's session accountId —
+      // this prevents admins from accidentally previewing templates with their own id filled.
+      // For non-admin users (students), we require a valid session accountId.
+      const accountId = queryAccountId || (isAdmin ? '' : sessionAccountId);
+
+      let profile = {};
+      if (!accountId) {
+        if (!isAdmin) return fail(res, "EMPTY_ACCOUNT", "缺少学号");
+        // admin preview without accountId: leave profile empty and don't create student row
+      } else {
+        const now = Date.now();
+        await ensurePartyStudentRowExists(pool, accountId, now);
+        const profileResp = await pool.query("SELECT * FROM party_students WHERE account_id=$1 LIMIT 1", [accountId]);
+        profile = profileResp.rows?.[0] || {};
+      }
+
+      const baseValues = {
+        accountId: accountId || '',
+        name: String(profile.name ?? "") || (accountId || ''),
         date: toYmd(new Date()),
       };
 
-      const raw = fs.readFileSync(full, "utf8");
-      const rendered = renderTemplateText(raw, values);
-      const html = wrapHtml(rendered);
+      // Build HTML depending on template format. For xlsx templates, convert sheets to HTML using SheetJS.
+      let html;
+      if (String(tpl.format) === 'xlsx') {
+        let XLSX;
+        try {
+          XLSX = require('xlsx');
+        } catch (e) {
+          return fail(res, 'DEPENDENCY_MISSING', '缺少依赖 xlsx，请在 server 目录执行：npm install xlsx', 500);
+        }
+
+        try {
+          const wb = XLSX.readFile(full);
+          const keysFromCells = extractXlsxFieldKeys(wb, XLSX);
+          if (keysFromCells.length) {
+            const values = buildCertTemplateValues({ baseValues, query: req.query, fieldKeys: keysFromCells });
+            fillXlsxWorkbookPlaceholders(wb, values);
+          } else {
+            const schema = extractXlsxHeaderSchema(wb, XLSX);
+            const headers = Array.isArray(schema?.headers) ? schema.headers : [];
+            const values = buildCertTemplateValues({ baseValues, query: req.query, fieldKeys: headers });
+            for (const h of headers) {
+              if (String(values[h] ?? "")) continue;
+              const inferred = inferAutoValueByHeader(h, baseValues);
+              if (inferred) values[h] = inferred;
+            }
+            for (const h of headers) {
+              const hh = String(h ?? "").trim();
+              if (!hh) continue;
+              if (hh === "序号" || hh === "编号") {
+                if (!String(values[h] ?? "")) values[h] = "1";
+              }
+            }
+            fillXlsxWorkbookByHeaderSchema(wb, XLSX, schema, values);
+          }
+          const combined = xlsxWorkbookToHtmlText(wb, XLSX);
+          html = wrapHtml(combined);
+        } catch (e) {
+          const msg = String(e?.message || e || '转换 xlsx 失败');
+          return fail(res, 'XLSX_RENDER_FAILED', `XLSX 转换失败：${msg}`, 500);
+        }
+      } else {
+        const raw = fs.readFileSync(full, "utf8");
+        const fieldKeys = extractTemplateFieldKeys(raw);
+        const values = buildCertTemplateValues({ baseValues, query: req.query, fieldKeys });
+        const rendered = renderTemplateText(raw, values);
+        html = wrapHtml(rendered);
+      }
 
       let puppeteer;
       try {
@@ -2352,6 +2886,7 @@ async function main() {
       const description = String(req.body?.description ?? "").trim();
       const issuer = String(req.body?.issuer ?? "").trim();
       const honorDate = normalizeYmdInput(req.body?.honorDate);
+      if (hasInvalidYmdInput(req.body?.honorDate)) return fail(res, "INVALID_DATE", "荣誉日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const isPublic = req.body?.isPublic === false ? false : true;
       const imagePath = normalizeAssetPath(req.body?.imagePath);
 
@@ -2381,6 +2916,7 @@ async function main() {
       const description = String(req.body?.description ?? "").trim();
       const issuer = String(req.body?.issuer ?? "").trim();
       const honorDate = normalizeYmdInput(req.body?.honorDate);
+      if (hasInvalidYmdInput(req.body?.honorDate)) return fail(res, "INVALID_DATE", "荣誉日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const isPublic = req.body?.isPublic === false ? false : true;
       const imagePath = normalizeAssetPath(req.body?.imagePath);
 
@@ -2626,8 +3162,18 @@ async function main() {
           return fail(res, String(e2?.code || "PARSE_FAILED"), msg || "成绩单解析失败", 400);
         }
 
-        const courses = Array.isArray(parsed.courses) ? parsed.courses : [];
-        if (!courses.length) return fail(res, "NO_COURSES", "未识别到课程信息，请上传HTML/CSV格式的成绩单", 400);
+        let courses = Array.isArray(parsed.courses) ? parsed.courses : [];
+
+        if (parsed?.format === "pdf" && parsed?.text) {
+          const planMatchedCourses = matchTranscriptCoursesFromPlanPdfText({
+            plan: { name: plan.name, modules: plan.modules },
+            text: parsed.text,
+          });
+          if (planMatchedCourses.length) {
+            courses = dedupeTranscriptCourses([...courses, ...planMatchedCourses]);
+          }
+        }
+        if (!courses.length) return fail(res, "NO_COURSES", "未识别到课程信息：请确认PDF为文字版成绩单，或上传HTML/CSV格式的成绩单", 400);
 
         const now = Date.now();
         const parseSummary = buildTranscriptParseSummary({
@@ -3045,6 +3591,7 @@ async function main() {
       if (!title) return fail(res, "EMPTY_TITLE", "请填写活动标题");
       const summary = String(req.body?.summary ?? "").trim();
       const activityDate = normalizeYmdInput(req.body?.activityDate);
+      if (hasInvalidYmdInput(req.body?.activityDate)) return fail(res, "INVALID_DATE", "活动日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const targetTag = String(req.body?.targetTag ?? "").trim();
       const photoPaths = normalizeStringArray(req.body?.photoPaths);
       const participantsRaw = req.body?.participants || {};
@@ -3154,6 +3701,7 @@ async function main() {
       if (!title) return fail(res, "EMPTY_TITLE", "请填写活动标题");
       const summary = String(req.body?.summary ?? "").trim();
       const activityDate = normalizeYmdInput(req.body?.activityDate);
+      if (hasInvalidYmdInput(req.body?.activityDate)) return fail(res, "INVALID_DATE", "活动日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const targetTag = String(req.body?.targetTag ?? "").trim();
       const photoPaths = normalizeStringArray(req.body?.photoPaths);
       const participantsRaw = req.body?.participants || {};

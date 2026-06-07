@@ -1,12 +1,20 @@
 const STORAGE_KEY = 'mp_web_session'
 
+function normalizeApiBaseUrl(input) {
+  let base = String(input || '').trim()
+  if (!base) return ''
+  base = base.replace(/\/+$/, '')
+  if (/\/api$/i.test(base)) base = base.replace(/\/api$/i, '')
+  return base.replace(/\/+$/, '')
+}
+
 function getBaseUrl() {
   // In development use relative paths so Vite dev-server proxy (configured for '/api') will forward requests
   // to the backend and avoid CORS issues. In production use VITE_API_BASE or default to http://localhost:3001
   if (import.meta.env && import.meta.env.DEV) {
     return ''
   }
-  return (import.meta.env.VITE_API_BASE || 'http://localhost:3001')
+  return normalizeApiBaseUrl(import.meta.env.VITE_API_BASE || '')
 }
 
 function getSession() {
@@ -65,6 +73,10 @@ async function request({ method = 'GET', path = '/', data = null, auth = true })
   }
 }
 
+async function j({ method = 'GET', path = '/', data = null, auth = true }) {
+  return await request({ method, path, data, auth })
+}
+
 async function loginWithAccount({ role, accountId, password }) {
   const data = await request({ method: 'POST', path: '/api/auth/login', data: { role, accountId, password }, auth: false })
   const session = { token: data.token, role: data.user?.role, accountId: data.user?.accountId, loginAt: data.loginAt }
@@ -117,8 +129,10 @@ const featureApi = {
   async certAdminTemplateList() { return await request({ method: 'GET', path: '/api/cert/admin/templates', auth: true }) },
   // supports base64 upload (as in mini program)
   async certAdminTemplateUpload({ title, category, format, fileName, fileBase64 }) { const fmt = format === 'xlsx' ? 'xlsx' : format === 'txt' ? 'txt' : 'html'; return await request({ method: 'POST', path: '/api/cert/admin/templates', data: { title: String(title ?? ''), category: String(category ?? ''), format: fmt, fileName: String(fileName ?? ''), fileBase64: String(fileBase64 ?? '') }, auth: true }) },
-  async certTemplateFileDownloadUrl(id) { return `/api/cert/templates/${encodeURIComponent(id)}/file` },
-  async certTemplatePdfUrl(id, params) { const q = buildQuery(params); return `/api/cert/templates/${encodeURIComponent(id)}/pdf${q}` },
+  async certAdminTemplateDelete({ id }) { const i = String(id ?? '').trim(); return await request({ method: 'DELETE', path: `/api/cert/admin/templates/${encodeURIComponent(i)}`, auth: true }) },
+  async certTemplateFields({ id }) { const i = String(id ?? '').trim(); return await request({ method: 'GET', path: `/api/cert/templates/${encodeURIComponent(i)}/fields`, auth: true }) },
+  certTemplateFileDownloadUrl(id) { return `/api/cert/templates/${encodeURIComponent(id)}/file` },
+  certTemplatePdfUrl(id, params) { const q = buildQuery(params); return `/api/cert/templates/${encodeURIComponent(id)}/pdf${q}` },
 
   async academicPlans() { return await request({ method: 'GET', path: '/api/academic/plans', auth: true }) },
   async academicStudentReport({ semester, planName }) { const q = buildQuery({ semester, planName }); return await request({ method: 'GET', path: `/api/academic/student/report${q}`, auth: true }) },
@@ -147,5 +161,5 @@ const featureApi = {
   async activityCadreUpload(file) { return await uploadFile('/api/activity/cadre/upload', file, 'file') },
 }
 
-export default { getBaseUrl, auth: { loginWithAccount, getSession, logout, setSession }, featureApi }
+export default { getBaseUrl, j, auth: { loginWithAccount, getSession, logout, setSession }, featureApi }
 export { getSession, logout }
