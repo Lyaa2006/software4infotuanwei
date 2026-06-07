@@ -1,0 +1,6 @@
+<view class="page">
+  <view class="card">
+    <view class="title">{{title}}</view>
+    <rich-text class="preview" nodes="{{html}}"></rich-text>
+  </view>
+</view>

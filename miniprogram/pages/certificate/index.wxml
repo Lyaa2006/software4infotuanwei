@@ -49,14 +49,43 @@
       <view class="item" wx:for="{{templates}}" wx:key="_id">
         <view class="item_top">
           <view class="item_title">{{item.title}}</view>
-          <view class="item_meta">{{item.format.toUpperCase()}}{{item.category ? (' · ' + item.category) : ''}}</view>
+          <view class="item_meta">{{item.format.toUpperCase()}}{{item.category ? (' / ' + item.category) : ''}}</view>
         </view>
         <view class="item_actions">
-          <button size="mini" class="ghost" data-id="{{item._id}}" bindtap="onDownloadTemplate">下载模板</button>
+          <button size="mini" class="ghost" data-id="{{item._id}}" data-format="{{item.format}}" data-title="{{item.title}}" bindtap="onDownloadTemplate">下载模板</button>
+          <button size="mini" class="primary" type="primary" data-id="{{item._id}}" bindtap="onGeneratePdf">
+            生成PDF
+          </button>
+          <button wx:if="{{isAdmin}}" size="mini" class="ghost danger" data-id="{{item._id}}" bindtap="onDeleteTemplate">删除</button>
         </view>
       </view>
     </view>
     <view class="empty" wx:if="{{!templates.length}}">暂无模板</view>
+  </view>
+
+  <view class="card">
+    <view class="section_title">自动填充字段</view>
+    <view class="hint">系统会自动填入：{{nameHint}}</view>
+
+    <view class="form_row">
+      <view class="label">学院（可选）</view>
+      <input class="input" placeholder="例如：信息工程学院" value="{{college}}" bindinput="onCollegeInput" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">连排（可选）</view>
+      <input class="input" placeholder="例如：三连二排" value="{{platoon}}" bindinput="onPlatoonInput" />
+    </view>
+
+    <view class="form_row">
+      <view class="label">请假事由（可选）</view>
+      <textarea class="textarea" placeholder="例如：上课冲突、比赛、生病等" value="{{reason}}" bindinput="onReasonInput" auto-height maxlength="200"></textarea>
+    </view>
+
+    <view class="form_row">
+      <view class="label">请假证明（可选）</view>
+      <textarea class="textarea" placeholder="例如：门诊证明、比赛通知等" value="{{proof}}" bindinput="onProofInput" auto-height maxlength="200"></textarea>
+    </view>
   </view>
 
   <view class="card" wx:if="{{isAdmin}}">

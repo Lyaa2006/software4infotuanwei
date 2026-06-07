@@ -34,9 +34,16 @@ function buildAuthHeader(session) {
   return { Authorization: `Bearer ${session.token}` };
 }
 
+function normalizeAssetPath(p) {
+  const raw = String(p || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `/${raw.replace(/^\/+/, "")}`;
+}
+
 function joinUrl(baseUrl, p) {
   const base = String(baseUrl || "").replace(/\/+$/, "");
-  const path = String(p || "");
+  const path = normalizeAssetPath(p);
   if (!path) return "";
   if (/^https?:\/\//i.test(path)) return path;
   return `${base}${path.startsWith("/") ? "" : "/"}${path}`;

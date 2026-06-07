@@ -1,6 +1,9 @@
 Page({
   data: {
     user: null,
+    envOptions: [],
+    envIndex: 0,
+    runtimeEnv: null,
     features: [
       { key: "policyQA", title: "智能政策问答" },
       { key: "partyLeague", title: "党团事务流程管理" },
@@ -11,7 +14,6 @@ Page({
       { key: "activity", title: "班团活动管理" },
     ],
   },
-
   onShow() {
     const api = require("../../services/api");
     const session = api.auth.getSession();
@@ -25,8 +27,33 @@ Page({
         accountId: session.accountId,
       },
     });
+    this.refreshEnvConfig();
   },
+  refreshEnvConfig() {
+    const api = require("../../services/api");
+    const envOptions = api.getTestingEnvOptions();
+    const runtimeConfig = api.getRuntimeConfig();
+    const matchedIndex = envOptions.findIndex((item) => item.key === runtimeConfig.envKey);
 
+    this.setData({
+      envOptions,
+      envIndex: matchedIndex >= 0 ? matchedIndex : 0,
+      runtimeEnv: runtimeConfig,
+    });
+  },
+  onEnvChange(e) {
+    const index = Number(e.detail.value || 0);
+    const target = this.data.envOptions[index];
+    if (!target) return;
+
+    const api = require("../../services/api");
+    api.setTestingEnv(target.key);
+    this.refreshEnvConfig();
+    wx.showToast({
+      title: "测试环境已切换",
+      icon: "none",
+    });
+  },
   onTapFeature(e) {
     const { key, title } = e.currentTarget.dataset;
     if (key === "policyQA") {
@@ -68,7 +95,6 @@ Page({
       icon: "none",
     });
   },
-
   onLogout() {
     const api = require("../../services/api");
     api.auth.logout();

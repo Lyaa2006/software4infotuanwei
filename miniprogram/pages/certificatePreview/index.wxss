@@ -1,0 +1,26 @@
+page {
+  background: #f6f6f6;
+}
+
+.page {
+  padding: 24rpx;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 28rpx;
+}
+
+.title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+  margin-bottom: 20rpx;
+}
+
+.preview {
+  font-size: 28rpx;
+  color: rgba(0, 0, 0, 0.85);
+  line-height: 1.7;
+}

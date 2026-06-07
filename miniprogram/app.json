@@ -5,6 +5,7 @@
     "pages/policyQA/index",
     "pages/reminder/index",
     "pages/certificate/index",
+    "pages/certificatePreview/index",
     "pages/academic/index",
     "pages/honor/index",
     "pages/honorProfile/index",

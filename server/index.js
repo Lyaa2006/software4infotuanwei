@@ -678,6 +678,11 @@ function normalizeYmdInput(value) {
   return s;
 }
 
+function normalizeAssetPath(value) {
+  const s = String(value ?? "").trim().replace(/\\/g, "/");
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  return `/${s.replace(/^\/+/, "")}`;
 function hasInvalidYmdInput(value) {
   const raw = String(value ?? "").trim();
   return !!raw && !normalizeYmdInput(raw);
@@ -1225,10 +1230,18 @@ function parseTranscriptFromHtml(html) {
   return out;
 }
 
+function bufferStartsWith(buffer, signature) {
+  if (!Buffer.isBuffer(buffer)) return false;
+  const text = String(signature ?? "");
+  if (!text || buffer.length < text.length) return false;
+  return buffer.subarray(0, text.length).toString("latin1") === text;
+}
+
 async function parseTranscriptFile({ filename, mime, buffer }) {
   const name = String(filename ?? "");
   const ext = path.extname(name).toLowerCase();
   const type = String(mime ?? "").toLowerCase();
+  const isPdfFile = ext === ".pdf" || type.includes("pdf") || bufferStartsWith(buffer, "%PDF-");
 
   if (ext === ".csv" || type.includes("csv")) {
     return { format: "csv", courses: parseTranscriptFromCsvText(buffer.toString("utf8")) };
@@ -1239,7 +1252,7 @@ async function parseTranscriptFile({ filename, mime, buffer }) {
   if (ext === ".html" || ext === ".htm" || type.includes("text/html")) {
     return { format: "html", courses: parseTranscriptFromHtml(buffer.toString("utf8")) };
   }
-  if (ext === ".pdf" || type.includes("pdf")) {
+  if (isPdfFile) {
     let PDFParse;
     try {
       ensurePdfParseRuntimeCompat();
@@ -2595,19 +2608,28 @@ async function main() {
     try {
       const id = Number(req.params.id);
       if (!id) return fail(res, "EMPTY_ID", "缺少ID");
-      const resp = await pool.query("SELECT id, storage_path FROM document_templates WHERE id=$1 LIMIT 1", [id]);
+
+      const resp = await pool.query(
+        "SELECT id, storage_path FROM document_templates WHERE id=$1 LIMIT 1",
+        [id],
+      );
       const row = resp.rows?.[0] || null;
       if (!row) return fail(res, "NOT_FOUND", "模板不存在", 404);
 
       await pool.query("DELETE FROM document_templates WHERE id=$1", [id]);
 
       const storagePath = String(row.storage_path ?? "");
-      const full = resolveStoragePath(storagePath);
-      if (full && fs.existsSync(full)) {
-        try {
-          fs.unlinkSync(full);
-        } catch {}
+      if (storagePath.startsWith("templates/uploads/")) {
+        const full = resolveStoragePath(storagePath);
+        if (full) {
+          try {
+            await fs.promises.unlink(full);
+          } catch {
+            // best-effort: ignore missing/permission errors so API remains idempotent
+          }
+        }
       }
+
       ok(res, { ok: true });
     } catch (e) {
       fail(res, "SERVER_ERROR", "服务器异常", 500);
@@ -2809,7 +2831,7 @@ async function main() {
         description: String(r.description ?? ""),
         issuer: String(r.issuer ?? ""),
         honorDate: toYmd(r.honor_date),
-        imagePath: String(r.image_path ?? ""),
+        imagePath: normalizeAssetPath(r.image_path),
         isPublic: !!r.is_public,
         createdAt: Number(r.created_at || 0),
         updatedAt: Number(r.updated_at || 0),
@@ -2837,7 +2859,7 @@ async function main() {
         description: String(r.description ?? ""),
         issuer: String(r.issuer ?? ""),
         honorDate: toYmd(r.honor_date),
-        imagePath: String(r.image_path ?? ""),
+        imagePath: normalizeAssetPath(r.image_path),
         isPublic: !!r.is_public,
         createdAt: Number(r.created_at || 0),
         updatedAt: Number(r.updated_at || 0),
@@ -2866,7 +2888,7 @@ async function main() {
       const honorDate = normalizeYmdInput(req.body?.honorDate);
       if (hasInvalidYmdInput(req.body?.honorDate)) return fail(res, "INVALID_DATE", "荣誉日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const isPublic = req.body?.isPublic === false ? false : true;
-      const imagePath = String(req.body?.imagePath ?? "").trim();
+      const imagePath = normalizeAssetPath(req.body?.imagePath);
 
       const now = Date.now();
       const insert = await pool.query(
@@ -2896,7 +2918,7 @@ async function main() {
       const honorDate = normalizeYmdInput(req.body?.honorDate);
       if (hasInvalidYmdInput(req.body?.honorDate)) return fail(res, "INVALID_DATE", "荣誉日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const isPublic = req.body?.isPublic === false ? false : true;
-      const imagePath = String(req.body?.imagePath ?? "").trim();
+      const imagePath = normalizeAssetPath(req.body?.imagePath);
 
       const now = Date.now();
       const upd = await pool.query(
@@ -2956,8 +2978,7 @@ async function main() {
         const stamp = Date.now();
         const rand = crypto.randomBytes(6).toString("hex");
         const stored = `${accountId}_${stamp}_${rand}${finalExt}`;
-  // return a path that starts with a leading slash so frontend can use it as an absolute URL
-  const rel = (`/uploads/honor/${stored}`).replace(/\\/g, "/");
+        const rel = `uploads/honor/${stored}`.replace(/\\/g, "/");
         const full = resolveStoragePath(rel);
         if (!full) {
           file.resume();
@@ -3106,7 +3127,14 @@ async function main() {
       let gotFile = false;
       let originalName = "";
       let mime = "";
+      let originalNameField = "";
+      let originalMimeField = "";
       const chunks = [];
+
+      busboy.on("field", (fieldname, val) => {
+        if (fieldname === "originalName") originalNameField = String(val ?? "").trim();
+        if (fieldname === "originalMime") originalMimeField = String(val ?? "").trim();
+      });
 
       busboy.on("file", (fieldname, file, info) => {
         gotFile = true;
@@ -3124,7 +3152,11 @@ async function main() {
 
         let parsed;
         try {
-          parsed = await parseTranscriptFile({ filename: originalName, mime, buffer: buf });
+          parsed = await parseTranscriptFile({
+            filename: originalNameField || originalName,
+            mime: originalMimeField || mime,
+            buffer: buf,
+          });
         } catch (e2) {
           const msg = String(e2?.message || "");
           return fail(res, String(e2?.code || "PARSE_FAILED"), msg || "成绩单解析失败", 400);
@@ -3224,10 +3256,14 @@ async function main() {
       let gotFile = false;
       let originalName = "";
       let mime = "";
+      let originalNameField = "";
+      let originalMimeField = "";
       const chunks = [];
 
       busboy.on("field", (fieldname, val) => {
         if (fieldname === "name") planName = String(val ?? "").trim();
+        if (fieldname === "originalName") originalNameField = String(val ?? "").trim();
+        if (fieldname === "originalMime") originalMimeField = String(val ?? "").trim();
       });
 
       busboy.on("file", (fieldname, file, info) => {
@@ -3245,7 +3281,11 @@ async function main() {
 
         let parsed;
         try {
-          parsed = await parseTrainingPlanFile({ filename: originalName, mime, buffer: buf });
+          parsed = await parseTrainingPlanFile({
+            filename: originalNameField || originalName,
+            mime: originalMimeField || mime,
+            buffer: buf,
+          });
         } catch (e2) {
           return fail(res, String(e2?.code || "PARSE_FAILED"), String(e2?.message || "导入失败"), 400);
         }
