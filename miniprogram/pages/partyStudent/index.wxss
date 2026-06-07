@@ -36,26 +36,30 @@ page {
   margin-bottom: 16rpx;
 }
 
-.progress_scroll {
-  width: 100%;
-}
-
 .progress {
   display: flex;
-  align-items: center;
-  padding-bottom: 10rpx;
+  flex-direction: column;
+  gap: 18rpx;
 }
 
 .progress_item {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  gap: 20rpx;
 }
 
-.node_wrap {
+.timeline {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 240rpx;
+  flex-shrink: 0;
+}
+
+.node_wrap {
+  flex: 1;
+  min-height: 56rpx;
+  display: flex;
+  align-items: center;
 }
 
 .node_circle {
@@ -79,10 +83,10 @@ page {
 }
 
 .node_label {
-  font-size: 24rpx;
-  text-align: center;
+  font-size: 28rpx;
+  text-align: left;
   color: rgba(0, 0, 0, 0.55);
-  line-height: 34rpx;
+  line-height: 40rpx;
 }
 
 .node_label.done {
@@ -95,11 +99,11 @@ page {
 }
 
 .node_line {
-  width: 80rpx;
-  height: 6rpx;
+  width: 6rpx;
+  min-height: 56rpx;
   border-radius: 4rpx;
   background: #d9d9d9;
-  margin: 0 10rpx;
+  margin-top: 8rpx;
 }
 
 .node_line.done {
@@ -130,5 +134,61 @@ page {
   font-size: 26rpx;
   color: rgba(0, 0, 0, 0.7);
   line-height: 40rpx;
+}
+
+.detail_mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32rpx;
+  box-sizing: border-box;
+  z-index: 999;
+}
+
+.detail_dialog {
+  width: 100%;
+  max-width: 620rpx;
+  background: #ffffff;
+  border-radius: 20rpx;
+  padding: 32rpx 28rpx 24rpx;
+  box-sizing: border-box;
+}
+
+.detail_title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+  line-height: 44rpx;
+  margin-bottom: 18rpx;
+}
+
+.detail_line {
+  font-size: 26rpx;
+  color: rgba(0, 0, 0, 0.78);
+  line-height: 40rpx;
+}
+
+.detail_line + .detail_line {
+  margin-top: 8rpx;
+}
+
+.detail_actions {
+  margin-top: 26rpx;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.detail_btn {
+  min-width: 180rpx;
+  padding: 16rpx 24rpx;
+  border-radius: 999rpx;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 26rpx;
+  line-height: 1;
+  text-align: center;
 }
 

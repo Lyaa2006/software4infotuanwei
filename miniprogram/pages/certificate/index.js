@@ -54,6 +54,31 @@ function resolveOpenFileType(format) {
   return undefined;
 }
 
+function fieldLabel(key) {
+  const k = String(key ?? "").trim();
+  const map = {
+    name: "姓名",
+    accountId: "学号",
+    date: "日期",
+  };
+  return map[k] || k;
+}
+
+function fieldPlaceholder(key) {
+  const k = String(key ?? "").trim();
+  const map = {
+    name: "请输入姓名",
+    accountId: "请输入学号",
+    date: "例如：2026-06-08",
+  };
+  return map[k] || `请输入${fieldLabel(k)}`;
+}
+
+function isMultilineField(key) {
+  const k = String(key ?? "").trim().toLowerCase();
+  return k.includes("reason") || k.includes("proof") || k.includes("remark") || k.includes("note");
+}
+
 Page({
   data: {
     isAdmin: false,
@@ -64,7 +89,6 @@ Page({
     selectedTemplateTitle: "",
     selectedTemplateMeta: "",
     manualFields: [],
-    nameHint: "姓名、学号、日期",
     uploadTitle: "",
     uploadCategory: "",
     uploadFileName: "",

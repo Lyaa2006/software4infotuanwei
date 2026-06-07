@@ -31,61 +31,6 @@ page {
   margin-bottom: 20rpx;
 }
 
-.env_card {
-  background: #ffffff;
-  border-radius: 16rpx;
-  padding: 24rpx;
-  margin-bottom: 20rpx;
-}
-
-.env_header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16rpx;
-}
-
-.env_title {
-  font-size: 30rpx;
-  font-weight: 600;
-  color: rgba(0, 0, 0, 0.9);
-}
-
-.env_switch {
-  font-size: 24rpx;
-  color: #175cd3;
-}
-
-.env_name {
-  font-size: 28rpx;
-  color: rgba(0, 0, 0, 0.86);
-  margin-bottom: 8rpx;
-}
-
-.env_url {
-  font-size: 24rpx;
-  color: rgba(0, 0, 0, 0.52);
-  line-height: 36rpx;
-  margin-bottom: 12rpx;
-  word-break: break-all;
-}
-
-.env_note {
-  font-size: 24rpx;
-  color: #5f6b7a;
-  line-height: 36rpx;
-}
-
-.env_warn {
-  margin-top: 12rpx;
-  padding: 16rpx 18rpx;
-  border-radius: 12rpx;
-  background: #fff6e8;
-  color: #8c5a14;
-  font-size: 24rpx;
-  line-height: 36rpx;
-}
-
 .user_line {
   font-size: 28rpx;
   color: rgba(0, 0, 0, 0.75);

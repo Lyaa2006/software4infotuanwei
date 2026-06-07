@@ -19,7 +19,5 @@ Page({
       html: String(cached.html || ""),
     });
     wx.setNavigationBarTitle({ title });
-  }
-    wx.setNavigationBarTitle({ title });
   },
 });

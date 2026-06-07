@@ -2529,7 +2529,7 @@ async function main() {
 
       const autoFields = autoHeaders.length ? autoHeaders : CERT_TEMPLATE_AUTO_FIELDS;
       const manualFields = keys.filter((k) => !autoFields.includes(k));
-      ok(res, { id: String(tpl.id), title: String(tpl.title ?? ""), autoFields, manualFields });
+      ok(res, { id: String(tpl.id), title: String(tpl.title ?? ""), manualFields });
     } catch (e) {
       fail(res, "SERVER_ERROR", "服务器异常", 500);
     }
@@ -2887,6 +2887,7 @@ async function main() {
       const issuer = String(req.body?.issuer ?? "").trim();
       const honorDate = normalizeYmdInput(req.body?.honorDate);
       if (hasInvalidYmdInput(req.body?.honorDate)) return fail(res, "INVALID_DATE", "荣誉日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (honorDate && honorDate > localTodayYmd()) return fail(res, "INVALID_DATE", "荣誉日期不能设置为未来日期");
       const isPublic = req.body?.isPublic === false ? false : true;
       const imagePath = normalizeAssetPath(req.body?.imagePath);
 
@@ -2917,6 +2918,7 @@ async function main() {
       const issuer = String(req.body?.issuer ?? "").trim();
       const honorDate = normalizeYmdInput(req.body?.honorDate);
       if (hasInvalidYmdInput(req.body?.honorDate)) return fail(res, "INVALID_DATE", "荣誉日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      if (honorDate && honorDate > localTodayYmd()) return fail(res, "INVALID_DATE", "荣誉日期不能设置为未来日期");
       const isPublic = req.body?.isPublic === false ? false : true;
       const imagePath = normalizeAssetPath(req.body?.imagePath);
 

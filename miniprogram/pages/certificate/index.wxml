@@ -14,7 +14,6 @@
 
   <view class="card" wx:if="{{!isAdmin}}">
     <view class="section_title">填写字段</view>
-    <view class="hint">系统会自动填充：{{nameHint}}</view>
     <view class="hint" wx:if="{{!selectedTemplateId}}">请先选择模板</view>
 
     <view wx:if="{{selectedTemplateId}}">
@@ -61,31 +60,6 @@
       </view>
     </view>
     <view class="empty" wx:if="{{!templates.length}}">暂无模板</view>
-  </view>
-
-  <view class="card">
-    <view class="section_title">自动填充字段</view>
-    <view class="hint">系统会自动填入：{{nameHint}}</view>
-
-    <view class="form_row">
-      <view class="label">学院（可选）</view>
-      <input class="input" placeholder="例如：信息工程学院" value="{{college}}" bindinput="onCollegeInput" />
-    </view>
-
-    <view class="form_row">
-      <view class="label">连排（可选）</view>
-      <input class="input" placeholder="例如：三连二排" value="{{platoon}}" bindinput="onPlatoonInput" />
-    </view>
-
-    <view class="form_row">
-      <view class="label">请假事由（可选）</view>
-      <textarea class="textarea" placeholder="例如：上课冲突、比赛、生病等" value="{{reason}}" bindinput="onReasonInput" auto-height maxlength="200"></textarea>
-    </view>
-
-    <view class="form_row">
-      <view class="label">请假证明（可选）</view>
-      <textarea class="textarea" placeholder="例如：门诊证明、比赛通知等" value="{{proof}}" bindinput="onProofInput" auto-height maxlength="200"></textarea>
-    </view>
   </view>
 
   <view class="card" wx:if="{{isAdmin}}">

@@ -23,6 +23,15 @@ function buildNodes({ stages, currentStageIndex }) {
   });
 }
 
+function buildCurrentStageLines(profile) {
+  if (!profile) return [];
+  return [
+    `当前阶段：${profile.currentStageLabel || "未设置"}`,
+    `思想汇报截止：${profile.nextReportDue || "未设置"}`,
+    `谈话截止：${profile.nextTalkDue || "未设置"}`,
+  ];
+}
+
 function nodeDetail({ nodeValue, nextReportDue, nextTalkDue, isCurrent }) {
   const todoLines = [];
   if (isCurrent) {
@@ -58,11 +67,10 @@ function nodeDetail({ nodeValue, nextReportDue, nextTalkDue, isCurrent }) {
   };
 
   const def = defs[nodeValue] || defs.group_assessment;
-  const content = []
+  const lines = []
     .concat(def.lines.map((x) => `- ${x}`))
-    .concat(todoLines.length ? ["", ...todoLines.map((x) => x)] : [])
-    .join("\n");
-  return { title: def.title, content };
+    .concat(todoLines.map((x) => `- ${x}`));
+  return { title: def.title, lines };
 }
 
 function buildTopLines(profile) {
@@ -98,6 +106,10 @@ Page({
     nodes: [],
     topHead: "",
     topExtras: [],
+    currentStageLines: [],
+    detailVisible: false,
+    detailTitle: "",
+    detailLines: [],
     hint: "提示：点击流程节点查看该阶段说明与待办事项",
   },
 
@@ -133,6 +145,7 @@ Page({
         nodes,
         topHead: top.head,
         topExtras: top.extras,
+        currentStageLines: buildCurrentStageLines(profile),
       });
     } catch (e) {
       wx.showToast({ title: e?.message || "加载失败", icon: "none" });
@@ -154,11 +167,20 @@ Page({
       nextTalkDue: profile.nextTalkDue,
       isCurrent: idx === currentStageIndex,
     });
-    wx.showModal({
-      title: node.label,
-      content: `${detail.title}\n${detail.content}`,
-      showCancel: false,
+    this.setData({
+      detailVisible: true,
+      detailTitle: detail.title,
+      detailLines: detail.lines,
     });
   },
-});
 
+  onCloseDetail() {
+    this.setData({
+      detailVisible: false,
+      detailTitle: "",
+      detailLines: [],
+    });
+  },
+
+  noop() {},
+});

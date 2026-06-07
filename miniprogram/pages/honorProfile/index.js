@@ -16,6 +16,14 @@ function isValidYmd(ymd) {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d;
 }
 
+function localTodayYmd() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth() + 1);
+  const day = pad2(d.getDate());
+  return `${y}-${m}-${day}`;
+}
+
 function formatDateTime(ts) {
   const n = Number(ts || 0);
   if (!n) return "";
@@ -64,6 +72,7 @@ Page({
   data: {
     accountId: "",
     userTitle: "个人荣誉主页",
+    today: localTodayYmd(),
     isEditable: false,
     items: [],
     loading: false,
@@ -81,7 +90,7 @@ Page({
 
   onLoad(query) {
     const accountId = String(query?.accountId || "");
-    this.setData({ accountId });
+    this.setData({ accountId, today: localTodayYmd() });
   },
 
   onShow() {
@@ -92,7 +101,7 @@ Page({
       return;
     }
     const isEditable = session.role === "student" && String(session.accountId) === String(this.data.accountId);
-    this.setData({ isEditable });
+    this.setData({ isEditable, today: localTodayYmd() });
     this.reload();
   },
 
@@ -158,8 +167,12 @@ Page({
     this.setData({ formIssuer: e.detail.value });
   },
 
-  onFormHonorDateInput(e) {
+  onFormHonorDateChange(e) {
     this.setData({ formHonorDate: e.detail.value });
+  },
+
+  onClearHonorDate() {
+    this.setData({ formHonorDate: "" });
   },
 
   onFormPublicChange(e) {
@@ -279,6 +292,10 @@ Page({
     const honorDate = String(this.data.formHonorDate || "").trim();
     if (honorDate && !isValidYmd(honorDate)) {
       wx.showToast({ title: "日期无效", icon: "none" });
+      return;
+    }
+    if (honorDate && honorDate > this.data.today) {
+      wx.showToast({ title: "获奖日期不能晚于今天", icon: "none" });
       return;
     }
     this.setData({ saving: true });

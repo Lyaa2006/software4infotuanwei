@@ -18,8 +18,13 @@
     </view>
 
     <view class="form_row">
-      <view class="label">获奖日期（可选，YYYY-MM-DD）</view>
-      <input class="input" placeholder="例如：2026-05-01" value="{{formHonorDate}}" bindinput="onFormHonorDateInput" maxlength="10" />
+      <view class="label">获奖日期（可选）</view>
+      <picker mode="date" value="{{formHonorDate || today}}" end="{{today}}" bindchange="onFormHonorDateChange">
+        <view class="picker">{{formHonorDate || '请选择日期'}}</view>
+      </picker>
+      <view class="field_actions">
+        <button size="mini" class="ghost small_btn" disabled="{{!formHonorDate}}" bindtap="onClearHonorDate">清空日期</button>
+      </view>
     </view>
 
     <view class="form_row">
