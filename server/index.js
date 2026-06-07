@@ -2142,8 +2142,12 @@ async function main() {
       const storagePath = String(row.storage_path ?? "");
       if (storagePath.startsWith("templates/uploads/")) {
         const full = resolveStoragePath(storagePath);
-        if (full && fs.existsSync(full)) {
-          fs.unlinkSync(full);
+        if (full) {
+          try {
+            await fs.promises.unlink(full);
+          } catch {
+            // best-effort: ignore missing/permission errors so API remains idempotent
+          }
         }
       }
 
