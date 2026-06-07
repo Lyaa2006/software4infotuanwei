@@ -22,8 +22,8 @@ const TEST_ENV_OPTIONS = [
   {
     key: "cloudflare",
     label: "临时公网测试",
-    baseUrl: "https://entities-paths-bowling-concluded.trycloudflare.com",
-    note: "适用于预览、异地联调和真机调试；Cloudflare Quick Tunnel 重启后地址可能变化。",
+    baseUrl: "https://your-quick-tunnel.trycloudflare.com",
+    note: "适用于预览、异地联调和真机调试；请替换为当前 Cloudflare Quick Tunnel 地址。",
     supportsRealDevice: true,
   },
 ];
