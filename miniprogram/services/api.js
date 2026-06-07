@@ -1,28 +1,111 @@
-const STORAGE_KEYS = {
-  session: "session_v1",
-  apiBaseUrl: "api_base_url_v1",
-};
+const {
+  STORAGE_KEYS,
+  normalizeBaseUrl,
+  getTestingEnvOptions,
+  findTestingEnvByKey,
+  findTestingEnvByBaseUrl,
+  getDefaultTestingEnv,
+} = require("../config/testEnv");
 
-const DEFAULT_BASE_URL = "http://10.10.0.5:3001";
+function buildRuntimeConfig(options = {}) {
+  const { ignoreGlobalBaseUrl = false, ignoreGlobalEnvKey = false } = options;
+  const app = typeof getApp === "function" ? getApp() : null;
+  const globalBaseUrl = ignoreGlobalBaseUrl
+    ? ""
+    : normalizeBaseUrl(app?.globalData?.apiBaseUrl || "");
+  const storedBaseUrl = normalizeBaseUrl(wx.getStorageSync(STORAGE_KEYS.apiBaseUrl) || "");
+  const storedEnvKey = String(
+    (ignoreGlobalEnvKey ? "" : app?.globalData?.apiEnvKey) ||
+      wx.getStorageSync(STORAGE_KEYS.apiEnvKey) ||
+      ""
+  ).trim();
+
+  const preferredBaseUrl = globalBaseUrl || storedBaseUrl;
+  const matchedEnv =
+    findTestingEnvByKey(storedEnvKey) ||
+    findTestingEnvByBaseUrl(preferredBaseUrl) ||
+    getDefaultTestingEnv();
+  const baseUrl = preferredBaseUrl || matchedEnv.baseUrl;
+  const presetEnv = findTestingEnvByBaseUrl(baseUrl);
+
+  if (presetEnv) {
+    return {
+      envKey: presetEnv.key,
+      envName: presetEnv.label,
+      baseUrl: presetEnv.baseUrl,
+      note: presetEnv.note,
+      supportsRealDevice: presetEnv.supportsRealDevice,
+      isCustom: false,
+    };
+  }
+
+  return {
+    envKey: storedEnvKey || "custom",
+    envName: "自定义地址",
+    baseUrl,
+    note: "当前使用手动设置的接口地址。",
+    supportsRealDevice: /^https:\/\//i.test(baseUrl),
+    isCustom: true,
+  };
+}
+
+function syncAppRuntimeConfig(runtimeConfig) {
+  const app = typeof getApp === "function" ? getApp() : null;
+  if (!app) return;
+
+  const nextGlobalData = app.globalData || {};
+  nextGlobalData.apiEnvKey = runtimeConfig.envKey;
+  nextGlobalData.apiEnvName = runtimeConfig.envName;
+  nextGlobalData.apiBaseUrl = runtimeConfig.baseUrl;
+  nextGlobalData.apiEnvNote = runtimeConfig.note;
+  nextGlobalData.apiSupportsRealDevice = runtimeConfig.supportsRealDevice;
+  app.globalData = nextGlobalData;
+}
 
 function getBaseUrl() {
-  const app = typeof getApp === "function" ? getApp() : null;
-  const globalBaseUrl = String(app?.globalData?.apiBaseUrl || "").trim();
-  if (globalBaseUrl) return globalBaseUrl.replace(/\/+$/, "");
-
-  const storedBaseUrl = String(wx.getStorageSync(STORAGE_KEYS.apiBaseUrl) || "").trim();
-  if (storedBaseUrl) return storedBaseUrl.replace(/\/+$/, "");
-
-  return DEFAULT_BASE_URL;
+  return buildRuntimeConfig().baseUrl;
 }
 
 function setBaseUrl(baseUrl) {
-  const normalized = String(baseUrl || "").trim().replace(/\/+$/, "");
+  const normalized = normalizeBaseUrl(baseUrl);
   if (!normalized) {
     wx.removeStorageSync(STORAGE_KEYS.apiBaseUrl);
+    wx.removeStorageSync(STORAGE_KEYS.apiEnvKey);
+    syncAppRuntimeConfig(
+      buildRuntimeConfig({
+        ignoreGlobalBaseUrl: true,
+        ignoreGlobalEnvKey: true,
+      })
+    );
     return;
   }
+  const matchedEnv = findTestingEnvByBaseUrl(normalized);
   wx.setStorageSync(STORAGE_KEYS.apiBaseUrl, normalized);
+  wx.setStorageSync(STORAGE_KEYS.apiEnvKey, matchedEnv?.key || "custom");
+  syncAppRuntimeConfig(
+    buildRuntimeConfig({
+      ignoreGlobalBaseUrl: true,
+      ignoreGlobalEnvKey: true,
+    })
+  );
+}
+
+function setTestingEnv(envKey) {
+  const targetEnv = findTestingEnvByKey(envKey) || getDefaultTestingEnv();
+  wx.setStorageSync(STORAGE_KEYS.apiEnvKey, targetEnv.key);
+  wx.setStorageSync(STORAGE_KEYS.apiBaseUrl, targetEnv.baseUrl);
+  syncAppRuntimeConfig(
+    buildRuntimeConfig({
+      ignoreGlobalBaseUrl: true,
+      ignoreGlobalEnvKey: true,
+    })
+  );
+}
+
+function getRuntimeConfig() {
+  const runtimeConfig = buildRuntimeConfig();
+  syncAppRuntimeConfig(runtimeConfig);
+  return runtimeConfig;
 }
 
 function normalizeAccountId(accountId) {
@@ -528,6 +611,9 @@ const featureApi = {
 module.exports = {
   getBaseUrl,
   setBaseUrl,
+  setTestingEnv,
+  getRuntimeConfig,
+  getTestingEnvOptions,
   auth: {
     loginWithAccount,
     getSession,

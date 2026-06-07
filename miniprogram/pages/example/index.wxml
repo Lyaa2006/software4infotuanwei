@@ -9,6 +9,21 @@
     <view class="user_line">学工号：{{user.accountId}}</view>
   </view>
 
+  <view class="env_card" wx:if="{{runtimeEnv}}">
+    <view class="env_header">
+      <view class="env_title">当前测试环境</view>
+      <picker mode="selector" range="{{envOptions}}" range-key="label" value="{{envIndex}}" bindchange="onEnvChange">
+        <view class="env_switch">切换</view>
+      </picker>
+    </view>
+    <view class="env_name">{{runtimeEnv.envName}}</view>
+    <view class="env_url">{{runtimeEnv.baseUrl}}</view>
+    <view class="env_note">{{runtimeEnv.note}}</view>
+    <view class="env_warn" wx:if="{{!runtimeEnv.supportsRealDevice}}">
+      当前地址主要用于开发者工具联调；真机调试请切换到 HTTPS 的临时公网测试环境。
+    </view>
+  </view>
+
   <view class="list">
     <view
       class="item"

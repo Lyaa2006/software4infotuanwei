@@ -3,6 +3,18 @@
   <view class="top_tip">首次使用自动注册；学工号需在系统权限清单内</view>
 
   <view class="card">
+    <view class="field_title">测试环境</view>
+    <picker mode="selector" range="{{envOptions}}" range-key="label" value="{{envIndex}}" bindchange="onEnvChange">
+      <view class="env_picker">
+        <view class="env_picker_label">{{envName || '请选择测试环境'}}</view>
+        <view class="env_picker_value">{{envBaseUrl}}</view>
+      </view>
+    </picker>
+    <view class="env_tip">{{envNote}}</view>
+    <view class="env_warn" wx:if="{{!envSupportsRealDevice}}">
+      当前环境更适合开发者工具联调；真机调试请切换到 HTTPS 的“临时公网测试”。
+    </view>
+
     <view class="field_title">身份</view>
     <radio-group class="radio_group" bindchange="onRoleChange">
       <label class="radio_item">
