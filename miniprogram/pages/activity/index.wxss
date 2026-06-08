@@ -1,5 +1,5 @@
 page {
-  padding: 32rpx;
+  padding: 32rpx 5vw;
   background-color: #f6f6f6;
 }
 
@@ -92,6 +92,20 @@ page {
   padding: 18rpx;
 }
 
+.item_link {
+  position: relative;
+}
+
+.item_link::after {
+  content: "查看详情";
+  position: absolute;
+  right: 18rpx;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 24rpx;
+  color: #3b82f6;
+}
+
 .item_title {
   font-size: 30rpx;
   color: rgba(0, 0, 0, 0.9);
@@ -101,7 +115,7 @@ page {
 .item_meta {
   font-size: 24rpx;
   color: rgba(0, 0, 0, 0.55);
-  margin-bottom: 10rpx;
+  padding-right: 132rpx;
 }
 
 .item_desc {

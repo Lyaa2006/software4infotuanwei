@@ -1,10 +1,11 @@
 page {
-  padding: 32rpx;
+  padding: 32rpx 5vw;
   background-color: #f6f6f6;
 }
 
 .container {
   font-family: PingFang SC;
+  width: 100%;
 }
 
 .header {

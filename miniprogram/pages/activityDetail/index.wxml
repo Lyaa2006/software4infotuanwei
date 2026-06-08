@@ -1,0 +1,69 @@
+<view class="container" wx:if="{{item}}">
+  <view class="card hero">
+    <view class="hero_title">{{item.title || '未命名活动'}}</view>
+    <view class="hero_meta">提交人 {{item.createdBy || '-'}}{{item.statusText ? (' · ' + item.statusText) : ''}}</view>
+  </view>
+
+  <view class="card">
+    <view class="section_title">活动详情</view>
+    <view class="info_grid">
+      <view class="info_item">
+        <view class="info_label">活动日期</view>
+        <view class="info_value">{{item.activityDateText || '未填写'}}</view>
+      </view>
+      <view class="info_item">
+        <view class="info_label">目标标签</view>
+        <view class="info_value">{{item.targetTag || '未填写'}}</view>
+      </view>
+      <view class="info_item">
+        <view class="info_label">提交时间</view>
+        <view class="info_value">{{item.createdAtText || '未记录'}}</view>
+      </view>
+      <view class="info_item" wx:if="{{item.reviewedBy || item.reviewedAtText}}">
+        <view class="info_label">审核信息</view>
+        <view class="info_value">{{item.reviewedBy || '系统'}}{{item.reviewedAtText ? (' · ' + item.reviewedAtText) : ''}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section_title">活动回顾</view>
+    <view class="paragraph">{{item.summary || '暂无活动回顾'}}</view>
+  </view>
+
+  <view class="card">
+    <view class="section_title">参与人员</view>
+    <view class="participant_block">
+      <view class="participant_label">组织者</view>
+      <view class="participant_value">{{item.organizerText}}</view>
+    </view>
+    <view class="participant_block">
+      <view class="participant_label">参与者</view>
+      <view class="participant_value">{{item.participantText}}</view>
+    </view>
+    <view class="participant_block">
+      <view class="participant_label">协助者</view>
+      <view class="participant_value">{{item.helperText}}</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="section_title">活动图片</view>
+    <view class="img_row" wx:if="{{item.photoUrls.length}}">
+      <image class="img" mode="aspectFill" wx:for="{{item.photoUrls}}" wx:key="url" src="{{item}}" bindtap="onPreviewPhoto" data-url="{{item}}"></image>
+    </view>
+    <view class="hint" wx:else>暂无活动图片</view>
+  </view>
+
+  <view class="card" wx:if="{{item.rejectReason}}">
+    <view class="section_title">驳回原因</view>
+    <view class="paragraph reject_text">{{item.rejectReason}}</view>
+  </view>
+
+  <view class="action_bar" wx:if="{{canEdit || canDelete || canApprove || canReject}}">
+    <button class="ghost" wx:if="{{canEdit}}" bindtap="onEdit">编辑</button>
+    <button class="danger" wx:if="{{canDelete}}" bindtap="onDelete">删除</button>
+    <button class="danger" wx:if="{{canReject}}" bindtap="onReject">驳回</button>
+    <button class="primary" type="primary" wx:if="{{canApprove}}" bindtap="onApprove">通过</button>
+  </view>
+</view>

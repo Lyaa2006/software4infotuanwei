@@ -3556,13 +3556,46 @@ async function main() {
          LIMIT 200`,
         [accountId],
       );
-      const items = (resp.rows || []).map((r) => ({
+      const rows = resp.rows || [];
+      const activityIds = rows
+        .map((r) => Number(r.id || 0))
+        .filter((id) => Number.isInteger(id) && id > 0);
+      const participantMap = new Map();
+      if (activityIds.length) {
+        const participantResp = await pool.query(
+          `SELECT activity_id, account_id, role
+           FROM class_activity_participants
+           WHERE activity_id = ANY($1::bigint[])
+           ORDER BY activity_id ASC, created_at ASC, id ASC`,
+          [activityIds],
+        );
+        for (const row of participantResp.rows || []) {
+          const activityId = String(row.activity_id ?? "");
+          if (!activityId) continue;
+          if (!participantMap.has(activityId)) {
+            participantMap.set(activityId, {
+              organizers: [],
+              participants: [],
+              helpers: [],
+            });
+          }
+          const bucket = participantMap.get(activityId);
+          const participantAccountId = String(row.account_id ?? "").trim();
+          if (!participantAccountId) continue;
+          const role = String(row.role ?? "").trim();
+          if (role === "organizer") bucket.organizers.push(participantAccountId);
+          else if (role === "helper") bucket.helpers.push(participantAccountId);
+          else bucket.participants.push(participantAccountId);
+        }
+      }
+      const items = rows.map((r) => ({
         _id: String(r.id),
         title: String(r.title ?? ""),
         summary: String(r.summary ?? ""),
         activityDate: toYmd(r.activity_date),
         targetTag: String(r.target_tag ?? ""),
         photoPaths: normalizeStringArray(r.photo_paths),
+        participants: participantMap.get(String(r.id)) || { organizers: [], participants: [], helpers: [] },
         status: String(r.status ?? ""),
         rejectReason: String(r.reject_reason ?? ""),
         createdBy: String(r.created_by ?? ""),
@@ -3771,6 +3804,57 @@ async function main() {
     }
   });
 
+  async function handleActivityCadreDelete(req, res) {
+    const accountId = normalizeAccountId(req.user?.accountId);
+    if (req.user?.role !== "student") return fail(res, "NOT_STUDENT", "无学生权限", 403);
+    if (!accountId) return fail(res, "EMPTY_ACCOUNT", "缺少学号");
+    const id = Number(req.params.id);
+    if (!id) return fail(res, "EMPTY_ID", "缺少ID");
+
+    try {
+      const tags = await getStudentTags(pool, accountId);
+      if (!hasTag(tags, "班团骨干")) return fail(res, "NOT_CADRE", "无班团骨干权限", 403);
+
+      const existing = await pool.query(
+        "SELECT status FROM class_activities WHERE id=$1 AND created_by=$2 LIMIT 1",
+        [id, accountId],
+      );
+      const row = existing.rows?.[0] || null;
+      if (!row) return fail(res, "NOT_FOUND", "活动不存在", 404);
+      const status = String(row.status ?? "");
+      if (status === "approved") return fail(res, "FORBIDDEN", "已通过审核的活动不可删除", 403);
+
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("DELETE FROM class_activity_participants WHERE activity_id=$1", [id]);
+        await client.query("DELETE FROM class_activity_rejections WHERE activity_id=$1", [id]);
+        await client.query("DELETE FROM class_activity_reviews WHERE activity_id=$1", [id]);
+        const del = await client.query("DELETE FROM class_activities WHERE id=$1 AND created_by=$2", [id, accountId]);
+        if (!del.rowCount) {
+          await client.query("ROLLBACK");
+          return fail(res, "NOT_FOUND", "活动不存在", 404);
+        }
+        await client.query("COMMIT");
+        ok(res, { ok: true });
+      } catch (e) {
+        try {
+          await client.query("ROLLBACK");
+        } catch {}
+        throw e;
+      } finally {
+        client.release();
+      }
+    } catch (e) {
+      const mapped = mapActivityDbError(e);
+      if (mapped) return fail(res, mapped.code, mapped.message, mapped.status);
+      fail(res, "SERVER_ERROR", "服务器异常", 500);
+    }
+  }
+
+  app.delete("/api/activity/cadre/:id", authRequired, handleActivityCadreDelete);
+  app.post("/api/activity/cadre/:id/delete", authRequired, handleActivityCadreDelete);
+
   app.get("/api/activity/admin/pending", authRequired, adminRequired, async (req, res) => {
     try {
       const resp = await pool.query(
@@ -3783,13 +3867,46 @@ async function main() {
          ORDER BY a.created_at DESC
          LIMIT 200`,
       );
-      const items = (resp.rows || []).map((r) => ({
+      const rows = resp.rows || [];
+      const activityIds = rows
+        .map((r) => Number(r.id || 0))
+        .filter((id) => Number.isInteger(id) && id > 0);
+      const participantMap = new Map();
+      if (activityIds.length) {
+        const participantResp = await pool.query(
+          `SELECT activity_id, account_id, role
+           FROM class_activity_participants
+           WHERE activity_id = ANY($1::bigint[])
+           ORDER BY activity_id ASC, created_at ASC, id ASC`,
+          [activityIds],
+        );
+        for (const row of participantResp.rows || []) {
+          const activityId = String(row.activity_id ?? "");
+          if (!activityId) continue;
+          if (!participantMap.has(activityId)) {
+            participantMap.set(activityId, {
+              organizers: [],
+              participants: [],
+              helpers: [],
+            });
+          }
+          const bucket = participantMap.get(activityId);
+          const accountId = String(row.account_id ?? "").trim();
+          if (!accountId) continue;
+          const role = String(row.role ?? "").trim();
+          if (role === "organizer") bucket.organizers.push(accountId);
+          else if (role === "helper") bucket.helpers.push(accountId);
+          else bucket.participants.push(accountId);
+        }
+      }
+      const items = rows.map((r) => ({
         _id: String(r.id),
         title: String(r.title ?? ""),
         summary: String(r.summary ?? ""),
         activityDate: toYmd(r.activity_date),
         targetTag: String(r.target_tag ?? ""),
         photoPaths: normalizeStringArray(r.photo_paths),
+        participants: participantMap.get(String(r.id)) || { organizers: [], participants: [], helpers: [] },
         status: String(r.status ?? ""),
         rejectReason: String(r.reject_reason ?? ""),
         createdBy: String(r.created_by ?? ""),

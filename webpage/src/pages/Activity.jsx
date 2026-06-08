@@ -65,6 +65,8 @@ export default function Activity() {
 
   const [editingId, setEditingId] = useState('')
   const [editingRejectReason, setEditingRejectReason] = useState('')
+  const [previewItem, setPreviewItem] = useState(null)
+  const [previewPhotoUrl, setPreviewPhotoUrl] = useState('')
 
   const [formTitle, setFormTitle] = useState('')
   const [formDate, setFormDate] = useState('')
@@ -134,10 +136,26 @@ export default function Activity() {
       const r = await api.featureApi.activityAdminPending()
       const items = Array.isArray(r.items) ? r.items : []
       const baseUrl = api.getBaseUrl()
-      const mapped = items.map((x) => ({ ...x, activityDateText: formatYmd(x.activityDate) || formatDateTime(x.updatedAt) || '', photoUrls: (x.photoPaths || []).map((p) => joinUrl(baseUrl, p)).filter(Boolean) }))
+      const currentPreviewId = String(previewItem?._id || previewItem?.id || '')
+      const mapped = items.map((x) => ({
+        ...x,
+        activityDateText: formatYmd(x.activityDate) || formatDateTime(x.updatedAt) || '',
+        photoUrls: (x.photoPaths || []).map((p) => joinUrl(baseUrl, p)).filter(Boolean),
+      }))
       setPendingItems(mapped)
+      if (currentPreviewId) {
+        const found = mapped.find((item) => String(item._id || item.id) === currentPreviewId) || null
+        setPreviewItem(found)
+        setPreviewPhotoUrl((prev) => {
+          if (!found) return ''
+          const nextUrls = found.photoUrls || []
+          return nextUrls.includes(prev) ? prev : (nextUrls[0] || '')
+        })
+      }
     } catch (e) {
       setPendingItems([])
+      setPreviewItem(null)
+      setPreviewPhotoUrl('')
     }
   }
 
@@ -281,6 +299,22 @@ export default function Activity() {
     }
   }
 
+  function openPreview(item) {
+    if (!item) return
+    setPreviewItem(item)
+    setPreviewPhotoUrl((item.photoUrls || [])[0] || '')
+  }
+
+  function closePreview() {
+    setPreviewItem(null)
+    setPreviewPhotoUrl('')
+  }
+
+  function participantText(item, key) {
+    const arr = Array.isArray(item?.participants?.[key]) ? item.participants[key] : []
+    return arr.length ? arr.join('、') : '无'
+  }
+
   async function onToggleCadre(accountId) {
     if (!accountId) return
     const found = (students || []).find((x) => String(x.accountId) === String(accountId))
@@ -354,19 +388,152 @@ export default function Activity() {
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <div>
                     <div style={{ fontWeight: 600 }}>{i.title}</div>
-                    <div style={{ color: '#6b7280' }}>{i.activityDateText} · {i.status}</div>
+                    <div style={{ color: '#6b7280' }}>{i.activityDateText} · 提交人：{i.createdBy || '-'} · {i.status}</div>
                   </div>
                   <div>
+                    <button className="btn btn-secondary" onClick={() => openPreview(i)}>预览</button>
                     <button className="btn" onClick={() => onApprove(i._id || i.id)}>通过</button>
                     <button className="btn" style={{ marginLeft: 8, background: '#ef4444' }} onClick={() => onReject(i._id || i.id)}>驳回</button>
                   </div>
                 </div>
-                <div style={{ marginTop: 8 }}>{i.summary}</div>
-                <div style={{ marginTop: 8 }}>{(i.photoUrls || []).map((u) => <img key={u} src={u} alt="p" style={{ maxWidth: 120, marginLeft: 8 }} />)}</div>
+                <div style={{ marginTop: 8, color: '#334155' }}>{i.summary || '暂无活动摘要'}</div>
+                {!!(i.photoUrls || []).length && (
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+                    {(i.photoUrls || []).slice(0, 3).map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => openPreview(i)}
+                        style={{
+                          padding: 0,
+                          border: '1px solid #dbe4ee',
+                          borderRadius: 12,
+                          background: '#fff',
+                          width: 104,
+                          height: 104,
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <img src={u} alt="活动图片缩略图" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {i.rejectReason && <div style={{ marginTop: 8, color: '#ef4444' }}>驳回原因：{i.rejectReason}</div>}
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {isAdmin && previewItem && (
+        <div
+          onClick={closePreview}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(1040px, 100%)',
+              maxHeight: 'calc(100vh - 48px)',
+              overflow: 'auto',
+              padding: 0,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e2e8f0' }}>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 700 }}>{previewItem.title || '未命名活动'}</div>
+                <div style={{ marginTop: 6, color: '#64748b' }}>
+                  {previewItem.activityDateText || '未填写日期'} · 提交人：{previewItem.createdBy || '-'} · 状态：{previewItem.status || '-'}
+                </div>
+              </div>
+              <button className="btn btn-secondary" type="button" onClick={closePreview}>关闭</button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(320px, 0.8fr)', gap: 0 }}>
+              <div style={{ padding: 24, borderRight: '1px solid #e2e8f0' }}>
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 8 }}>活动摘要</div>
+                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.8, color: '#0f172a' }}>{previewItem.summary || '暂无活动摘要'}</div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 14, marginBottom: 18 }}>
+                  <div style={{ padding: 14, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>目标标签</div>
+                    <div>{previewItem.targetTag || '未填写'}</div>
+                  </div>
+                  <div style={{ padding: 14, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>图片数量</div>
+                    <div>{(previewItem.photoUrls || []).length} 张</div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <div style={{ padding: 14, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>组织者</div>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{participantText(previewItem, 'organizers')}</div>
+                  </div>
+                  <div style={{ padding: 14, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>参与者</div>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{participantText(previewItem, 'participants')}</div>
+                  </div>
+                  <div style={{ padding: 14, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 6 }}>协助者</div>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>{participantText(previewItem, 'helpers')}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ padding: 24, background: '#f8fbff' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 12 }}>活动图片预览</div>
+                {previewPhotoUrl ? (
+                  <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #dbe4ee', background: '#fff', boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)' }}>
+                    <img src={previewPhotoUrl} alt="活动图片预览" style={{ width: '100%', maxHeight: 420, objectFit: 'contain', display: 'block', background: '#e2e8f0' }} />
+                  </div>
+                ) : (
+                  <div style={{ padding: '48px 20px', borderRadius: 16, border: '1px dashed #cbd5e1', textAlign: 'center', color: '#64748b', background: '#fff' }}>暂无活动图片</div>
+                )}
+
+                {!!(previewItem.photoUrls || []).length && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))', gap: 10, marginTop: 14 }}>
+                    {(previewItem.photoUrls || []).map((u, idx) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => setPreviewPhotoUrl(u)}
+                        style={{
+                          padding: 0,
+                          borderRadius: 12,
+                          overflow: 'hidden',
+                          border: previewPhotoUrl === u ? '2px solid #1d4ed8' : '1px solid #dbe4ee',
+                          background: '#fff',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <img src={u} alt={`活动图片 ${idx + 1}`} style={{ width: '100%', height: 84, objectFit: 'cover', display: 'block' }} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                  <button className="btn" type="button" onClick={() => onApprove(previewItem._id || previewItem.id)}>通过</button>
+                  <button className="btn" type="button" style={{ background: '#ef4444' }} onClick={() => onReject(previewItem._id || previewItem.id)}>驳回</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

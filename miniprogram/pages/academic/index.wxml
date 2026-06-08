@@ -73,7 +73,7 @@
     </view>
     <view class="btn_row">
       <button class="ghost" disabled="{{loading}}" bindtap="onResetPlanForm">清空</button>
-      <button class="ghost" loading="{{importingPlan}}" disabled="{{importingPlan}}" bindtap="onImportPlanFile">上传导入</button>
+      <button class="ghost" loading="{{importingPlan}}" disabled="{{importingPlan}}" bindtap="onImportPlanFile">导入</button>
       <button class="primary" type="primary" loading="{{savingPlan}}" disabled="{{savingPlan}}" bindtap="onSavePlan">{{planEditingId ? '更新' : '新增'}}</button>
     </view>
 

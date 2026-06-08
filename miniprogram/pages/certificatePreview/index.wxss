@@ -3,7 +3,7 @@ page {
 }
 
 .page {
-  padding: 24rpx;
+  padding: 24rpx 5vw;
 }
 
 .card {

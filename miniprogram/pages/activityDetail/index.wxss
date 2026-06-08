@@ -1,0 +1,149 @@
+page {
+  padding: 32rpx 5vw 180rpx;
+  background: #f6f6f6;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+  font-family: PingFang SC;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 18rpx;
+  padding: 24rpx;
+}
+
+.hero {
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 72%);
+}
+
+.hero_title {
+  font-size: 38rpx;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.9);
+  line-height: 1.4;
+}
+
+.hero_meta {
+  margin-top: 10rpx;
+  font-size: 25rpx;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.section_title {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.9);
+  margin-bottom: 16rpx;
+}
+
+.info_grid {
+  display: grid;
+  gap: 14rpx;
+}
+
+.info_item {
+  background: #f8fafc;
+  border-radius: 14rpx;
+  padding: 18rpx;
+}
+
+.info_label {
+  font-size: 24rpx;
+  color: rgba(0, 0, 0, 0.5);
+  margin-bottom: 8rpx;
+}
+
+.info_value {
+  font-size: 28rpx;
+  color: rgba(0, 0, 0, 0.82);
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.paragraph {
+  font-size: 28rpx;
+  color: rgba(0, 0, 0, 0.8);
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.participant_block {
+  padding: 18rpx 0;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.06);
+}
+
+.participant_block:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.participant_label {
+  font-size: 24rpx;
+  color: rgba(0, 0, 0, 0.5);
+  margin-bottom: 8rpx;
+}
+
+.participant_value {
+  font-size: 28rpx;
+  color: rgba(0, 0, 0, 0.82);
+  line-height: 1.7;
+  word-break: break-all;
+}
+
+.img_row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.img {
+  width: 204rpx;
+  height: 204rpx;
+  border-radius: 14rpx;
+  background: #eef2f7;
+}
+
+.hint {
+  font-size: 24rpx;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.reject_text {
+  color: #d92d20;
+}
+
+.action_bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 20rpx 5vw calc(20rpx + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 -8rpx 24rpx rgba(15, 23, 42, 0.08);
+  display: flex;
+  gap: 16rpx;
+}
+
+.action_bar button {
+  margin: 0;
+  flex: 1;
+}
+
+.primary {
+  margin: 0;
+}
+
+.ghost {
+  margin: 0;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.danger {
+  margin: 0;
+  background: rgba(229, 69, 69, 0.1);
+  color: #e54545;
+}

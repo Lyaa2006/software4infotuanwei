@@ -10,6 +10,7 @@
     "pages/honor/index",
     "pages/honorProfile/index",
     "pages/activity/index",
+    "pages/activityDetail/index",
     "pages/partyStudent/index",
     "pages/partyAdminList/index",
     "pages/partyAdminEdit/index"

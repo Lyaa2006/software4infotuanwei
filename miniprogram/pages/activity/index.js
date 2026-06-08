@@ -56,6 +56,18 @@ function joinUrl(baseUrl, p) {
   return `${base}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
+function setDetailPayload(payload) {
+  const app = getApp();
+  const token = `activity_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  app.globalData = app.globalData || {};
+  const detailStore = app.globalData.activityDetailStore && typeof app.globalData.activityDetailStore === "object"
+    ? app.globalData.activityDetailStore
+    : {};
+  detailStore[token] = payload;
+  app.globalData.activityDetailStore = detailStore;
+  return token;
+}
+
 function parseUploadResponseText(text) {
   try {
     const obj = JSON.parse(String(text || ""));
@@ -108,7 +120,6 @@ Page({
     this.setData({ loading: true });
     wx.showLoading({ title: "加载中..." });
     try {
-      await this.loadMyActivities();
       if (this.data.isStudent) {
         await this.tryLoadCadreMine();
       }
@@ -124,28 +135,20 @@ Page({
     }
   },
 
-  async loadMyActivities() {
-    const api = require("../../services/api");
-    const resp = await api.featureApi.activityMyList();
-    const items = Array.isArray(resp.items) ? resp.items : [];
-    const mapped = items.map((x) => ({
-      ...x,
-      activityDateText: formatYmd(x.activityDate) || formatDateTime(x.updatedAt) || "",
-      myRoleText: x.myRole === "organizer" ? "组织" : x.myRole === "helper" ? "协助" : "参与",
-    }));
-    this.setData({ myItems: mapped });
-  },
-
   async tryLoadCadreMine() {
     const api = require("../../services/api");
     try {
       const resp = await api.featureApi.activityCadreMine();
       const items = Array.isArray(resp.items) ? resp.items : [];
+      const baseUrl = api.getBaseUrl();
       const mapped = items.map((x) => ({
         ...x,
         activityDateText: formatYmd(x.activityDate) || formatDateTime(x.updatedAt) || "",
+        createdAtText: formatDateTime(x.createdAt) || "",
+        reviewedAtText: formatDateTime(x.reviewedAt) || "",
         statusText: x.status === "approved" ? "已通过" : x.status === "rejected" ? "已驳回" : "待审核",
         canEdit: x.status !== "approved",
+        photoUrls: (x.photoPaths || []).map((p) => joinUrl(baseUrl, p)).filter(Boolean),
       }));
       this.setData({ isCadre: true, cadreItems: mapped });
     } catch (e) {
@@ -161,6 +164,9 @@ Page({
     const mapped = items.map((x) => ({
       ...x,
       activityDateText: formatYmd(x.activityDate) || formatDateTime(x.updatedAt) || "",
+      createdAtText: formatDateTime(x.createdAt) || "",
+      reviewedAtText: formatDateTime(x.reviewedAt) || "",
+      statusText: x.status === "approved" ? "已通过" : x.status === "rejected" ? "已驳回" : "待审核",
       photoUrls: (x.photoPaths || []).map((p) => joinUrl(baseUrl, p)).filter(Boolean),
     }));
     this.setData({ pendingItems: mapped });
@@ -182,13 +188,23 @@ Page({
     this.setData({ students: mapped });
   },
 
-  onTapItem(e) {
-    const item = e.currentTarget.dataset.item;
+  openCadreDetail(e) {
+    const id = String(e.currentTarget.dataset.id || "");
+    const item = (this.data.cadreItems || []).find((x) => String(x._id || x.id) === id);
     if (!item) return;
-    wx.showModal({
-      title: item.title || "活动",
-      content: `${item.activityDateText || ""}\n角色：${item.myRoleText || ""}\n\n${item.summary || ""}`,
-      showCancel: false,
+    const token = setDetailPayload({ item, mode: "cadre" });
+    wx.navigateTo({
+      url: `/pages/activityDetail/index?token=${encodeURIComponent(token)}`,
+    });
+  },
+
+  openPendingDetail(e) {
+    const id = String(e.currentTarget.dataset.id || "");
+    const item = (this.data.pendingItems || []).find((x) => String(x._id || x.id) === id);
+    if (!item) return;
+    const token = setDetailPayload({ item, mode: "pending" });
+    wx.navigateTo({
+      url: `/pages/activityDetail/index?token=${encodeURIComponent(token)}`,
     });
   },
 
@@ -236,13 +252,15 @@ Page({
     });
   },
 
-  onEditItem(e) {
-    const id = String(e.currentTarget.dataset.id || "");
-    const found = (this.data.cadreItems || []).find((x) => String(x._id) === id);
+  fillEditForm(found) {
     if (!found) return;
     const api = require("../../services/api");
     const baseUrl = api.getBaseUrl();
     const photoPaths = Array.isArray(found.photoPaths) ? found.photoPaths : [];
+    const participants = found.participants && typeof found.participants === "object" ? found.participants : {};
+    const organizers = Array.isArray(participants.organizers) ? participants.organizers : [];
+    const participantList = Array.isArray(participants.participants) ? participants.participants : [];
+    const helpers = Array.isArray(participants.helpers) ? participants.helpers : [];
     this.setData({
       editingId: found._id,
       editingRejectReason: found.rejectReason || "",
@@ -250,12 +268,18 @@ Page({
       formDate: found.activityDate || "",
       formSummary: found.summary || "",
       formTargetTag: found.targetTag || "",
-      formOrganizers: "",
-      formParticipants: "",
-      formHelpers: "",
+      formOrganizers: organizers.join(","),
+      formParticipants: participantList.join(","),
+      formHelpers: helpers.join(","),
       formPhotoPaths: photoPaths,
       formPhotos: photoPaths.map((p) => joinUrl(baseUrl, p)).filter(Boolean),
     });
+  },
+
+  onEditItem(e) {
+    const id = String(e.currentTarget.dataset.id || "");
+    const found = (this.data.cadreItems || []).find((x) => String(x._id) === id);
+    this.fillEditForm(found);
   },
 
   onPreviewPhoto(e) {

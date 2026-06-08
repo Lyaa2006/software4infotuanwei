@@ -585,6 +585,24 @@ const featureApi = {
       auth: true,
     });
   },
+  async activityCadreDelete({ id }) {
+    const normalizedId = String(id ?? "").trim();
+    try {
+      return await request({
+        method: "DELETE",
+        path: `/api/activity/cadre/${encodeURIComponent(normalizedId)}`,
+        data: {},
+        auth: true,
+      });
+    } catch (err) {
+      return await request({
+        method: "POST",
+        path: `/api/activity/cadre/${encodeURIComponent(normalizedId)}/delete`,
+        data: {},
+        auth: true,
+      });
+    }
+  },
   async activityAdminPending() {
     return await request({
       method: "GET",

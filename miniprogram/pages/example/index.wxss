@@ -1,5 +1,5 @@
 page {
-  padding: 32rpx;
+  padding: 32rpx 5vw;
   background-color: #f6f6f6;
 }
 
@@ -41,22 +41,26 @@ page {
   display: flex;
   flex-direction: column;
   gap: 16rpx;
+  align-items: center;
+  width: 100%;
 }
 
 .item {
   background: #ffffff;
   border-radius: 16rpx;
-  padding: 24rpx;
+  width: 75vw;
+  max-width: 100%;
+  min-height: 108rpx;
+  padding: 26rpx 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .item_title {
-  font-size: 32rpx;
+  font-size: 34rpx;
+  line-height: 46rpx;
   color: rgba(0, 0, 0, 0.9);
-  margin-bottom: 8rpx;
-}
-
-.item_tip {
-  font-size: 26rpx;
-  color: rgba(0, 0, 0, 0.5);
 }
 
