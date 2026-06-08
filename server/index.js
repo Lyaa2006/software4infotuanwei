@@ -683,6 +683,8 @@ function normalizeAssetPath(value) {
   if (!s) return "";
   if (/^https?:\/\//i.test(s)) return s;
   return `/${s.replace(/^\/+/, "")}`;
+}
+
 function hasInvalidYmdInput(value) {
   const raw = String(value ?? "").trim();
   return !!raw && !normalizeYmdInput(raw);
@@ -985,8 +987,9 @@ function shouldSkipTranscriptPdfLine(line) {
 }
 
 function isTranscriptSummaryLine(line) {
-  return /(总取得学分|总学分绩点|平均学分绩点|GPA|核算方法|制表单位|日期|页号|每门课学分绩点|平均学分绩点计算)/i.test(String(line ?? ""))
-    || /(?:^|\s)(?:A\(|A-\(|B\+\(|B\(|B-\(|C\+\(|C\(|C-\(|D\+\(|D\(|P\(|F\()/i.test(String(line ?? ""));
+  const value = String(line ?? "");
+  return /(总取得学分|总学分绩点|平均学分绩点|GPA|核算方法|制表单位|日期|页号|每门课学分绩点|平均学分绩点计算)/i.test(value)
+    || /(?:^|\s)(?:A\(|A-\(|B\+\(|B\(|B-\(|C\+\(|C\(|C-\(|D\+\(|D\(|P\(|F\()/i.test(value);
 }
 
 function looksLikeCourseName(text) {
@@ -1771,6 +1774,31 @@ function normalizeStringArray(value) {
     out.push(s);
   }
   return out;
+}
+
+async function resolveStudentAccountsByTags(db, tagValues) {
+  const wantedTags = normalizeStringArray(tagValues);
+  if (!wantedTags.length) return [];
+
+  const perm = await db.query(
+    "SELECT account_id FROM permitted_accounts WHERE role='student' AND enabled=TRUE ORDER BY account_id ASC",
+  );
+  const allAccounts = (perm.rows || []).map((r) => normalizeAccountId(r.account_id)).filter(Boolean);
+  if (!allAccounts.length) return [];
+
+  const tagResp = await db.query("SELECT account_id, tags FROM party_students");
+  const tagMap = new Map();
+  for (const row of tagResp.rows || []) {
+    const id = normalizeAccountId(row.account_id);
+    if (!id) continue;
+    tagMap.set(id, normalizeStringArray(row.tags));
+  }
+
+  const wanted = new Set(wantedTags);
+  return allAccounts.filter((id) => {
+    const tags = tagMap.get(id) || [];
+    return tags.some((tag) => wanted.has(tag));
+  });
 }
 
 async function ensurePartyStudentRowExists(pool, accountId, now) {
@@ -3628,6 +3656,7 @@ async function main() {
       const activityDate = normalizeYmdInput(req.body?.activityDate);
       if (hasInvalidYmdInput(req.body?.activityDate)) return fail(res, "INVALID_DATE", "活动日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const targetTag = String(req.body?.targetTag ?? "").trim();
+      const targetTags = normalizeStringArray(targetTag.split(/[ ,，、\n\r\t]+/));
       const photoPaths = normalizeStringArray(req.body?.photoPaths);
       const participantsRaw = req.body?.participants || {};
       const organizers = normalizeStringArray(participantsRaw.organizers);
@@ -3635,19 +3664,8 @@ async function main() {
       const participants = normalizeStringArray(participantsRaw.participants);
 
       let finalParticipants = participants;
-      if (!finalParticipants.length && targetTag) {
-        const perm = await pool.query(
-          "SELECT account_id FROM permitted_accounts WHERE role='student' AND enabled=TRUE ORDER BY account_id ASC",
-        );
-        const allAccounts = (perm.rows || []).map((r) => normalizeAccountId(r.account_id)).filter(Boolean);
-        const tagResp = await pool.query("SELECT account_id, tags FROM party_students");
-        const tagMap = new Map();
-        for (const row of tagResp.rows || []) {
-          const id = normalizeAccountId(row.account_id);
-          if (!id) continue;
-          tagMap.set(id, normalizeStringArray(row.tags));
-        }
-        finalParticipants = allAccounts.filter((id) => (tagMap.get(id) || []).includes(targetTag));
+      if (!finalParticipants.length && targetTags.length) {
+        finalParticipants = await resolveStudentAccountsByTags(pool, targetTags);
       }
 
       const now = Date.now();
@@ -3738,11 +3756,16 @@ async function main() {
       const activityDate = normalizeYmdInput(req.body?.activityDate);
       if (hasInvalidYmdInput(req.body?.activityDate)) return fail(res, "INVALID_DATE", "活动日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const targetTag = String(req.body?.targetTag ?? "").trim();
+      const targetTags = normalizeStringArray(targetTag.split(/[ ,，、\n\r\t]+/));
       const photoPaths = normalizeStringArray(req.body?.photoPaths);
       const participantsRaw = req.body?.participants || {};
       const organizers = normalizeStringArray(participantsRaw.organizers);
       const helpers = normalizeStringArray(participantsRaw.helpers);
       const participants = normalizeStringArray(participantsRaw.participants);
+      let finalParticipants = participants;
+      if (!finalParticipants.length && targetTags.length) {
+        finalParticipants = await resolveStudentAccountsByTags(pool, targetTags);
+      }
 
       const now = Date.now();
       const client = await pool.connect();
@@ -3759,7 +3782,7 @@ async function main() {
         const rows = [];
         for (const aid of organizers) rows.push({ accountId: aid, role: "organizer" });
         for (const aid of helpers) rows.push({ accountId: aid, role: "helper" });
-        for (const aid of participants) rows.push({ accountId: aid, role: "participant" });
+        for (const aid of finalParticipants) rows.push({ accountId: aid, role: "participant" });
         const uniq = new Set();
         const normalizedRows = [];
         for (const r of rows) {
