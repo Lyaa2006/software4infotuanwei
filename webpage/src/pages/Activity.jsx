@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import { filterStudentAccountRecords } from '../utils/studentAccounts'
 
 function pad2(n) { return String(n).padStart(2, '0') }
 function formatYmd(ymd) {
@@ -48,6 +49,34 @@ function parseIds(text) {
   return out
 }
 
+function getActivityId(item) {
+  return String(item?._id || item?.id || '').trim()
+}
+
+function canModifyCadreActivity(item) {
+  return !!item?.canEdit
+}
+
+function buildActivityParticipants({ organizersText, participantsText, helpersText }) {
+  return {
+    organizers: parseIds(organizersText),
+    participants: parseIds(participantsText),
+    helpers: parseIds(helpersText),
+  }
+}
+
+function buildDeleteConfirmText(item) {
+  const title = String(item?.title || '未命名活动')
+  const date = String(item?.activityDateText || item?.activityDate || '')
+  return `确认删除活动提案“${title}”${date ? `（${date}）` : ''}？
+
+删除后不可恢复。已审核通过的活动不能删除。`
+}
+
+function deleteButtonText(item, deletingId) {
+  return String(deletingId) === getActivityId(item) ? '删除中...' : '删除'
+}
+
 export default function Activity() {
   const navigate = useNavigate()
   const [isAdmin, setIsAdmin] = useState(false)
@@ -62,6 +91,7 @@ export default function Activity() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [deletingId, setDeletingId] = useState('')
 
   const [editingId, setEditingId] = useState('')
   const [editingRejectReason, setEditingRejectReason] = useState('')
@@ -77,6 +107,20 @@ export default function Activity() {
   const [formHelpers, setFormHelpers] = useState('')
   const [formPhotoPaths, setFormPhotoPaths] = useState([])
   const [formPhotos, setFormPhotos] = useState([])
+
+  function resetActivityForm() {
+    setEditingId('')
+    setEditingRejectReason('')
+    setFormTitle('')
+    setFormDate('')
+    setFormSummary('')
+    setFormTargetTag('')
+    setFormOrganizers('')
+    setFormParticipants('')
+    setFormHelpers('')
+    setFormPhotoPaths([])
+    setFormPhotos([])
+  }
 
   useEffect(() => { init() }, [])
 
@@ -162,7 +206,7 @@ export default function Activity() {
   async function loadStudents() {
     try {
       const r = await api.featureApi.reminderAdminStudents()
-      const items = Array.isArray(r.items) ? r.items : []
+      const items = filterStudentAccountRecords(r.items)
       const mapped = items.map((x) => {
         const tags = Array.isArray(x.tags) ? x.tags : []
         const isCad = tags.includes('班团骨干')
@@ -242,25 +286,14 @@ export default function Activity() {
     if (date && !isValidYmd(date)) return alert('日期格式错误或日期无效，应为真实的 YYYY-MM-DD')
     setSaving(true)
     try {
-      const participants = { organizers: parseIds(formOrganizers), participants: parseIds(formParticipants), helpers: parseIds(formHelpers) }
+      const participants = buildActivityParticipants({ organizersText: formOrganizers, participantsText: formParticipants, helpersText: formHelpers })
       if (editingId) {
         await api.featureApi.activityCadreUpdate({ id: editingId, title, summary: formSummary, activityDate: date, targetTag: formTargetTag, photoPaths: formPhotoPaths, participants })
       } else {
         await api.featureApi.activityCadreCreate({ title, summary: formSummary, activityDate: date, targetTag: formTargetTag, photoPaths: formPhotoPaths, participants })
       }
       alert('已提交')
-      // reset
-      setEditingId('')
-      setEditingRejectReason('')
-      setFormTitle('')
-      setFormDate('')
-      setFormSummary('')
-      setFormTargetTag('')
-      setFormOrganizers('')
-      setFormParticipants('')
-      setFormHelpers('')
-      setFormPhotoPaths([])
-      setFormPhotos([])
+      resetActivityForm()
       await tryLoadCadreMine()
     } catch (e) {
       alert(e?.message || '提交失败')
@@ -277,6 +310,29 @@ export default function Activity() {
       alert('已通过')
       await loadPending()
     } catch (e) { alert(e?.message || '操作失败') }
+  }
+
+  async function onDeleteCadreItem(item) {
+    const id = getActivityId(item)
+    if (!id || deletingId) return
+    if (!canModifyCadreActivity(item)) return alert('该活动当前不可删除')
+
+    // The frontend only controls button visibility and confirmation. Backend
+    // permissions still enforce creator ownership, student role, cadre tag and
+    // approved-activity protection.
+    if (!window.confirm(buildDeleteConfirmText(item))) return
+
+    setDeletingId(id)
+    try {
+      await api.featureApi.activityCadreDelete({ id })
+      alert('已删除')
+      if (String(editingId) === id) resetActivityForm()
+      await tryLoadCadreMine()
+    } catch (e) {
+      alert(e?.message || '删除失败')
+    } finally {
+      setDeletingId('')
+    }
   }
 
   async function onReject(id) {
@@ -369,7 +425,8 @@ export default function Activity() {
                     <div style={{ color: '#6b7280' }}>{i.activityDateText} · {i.statusText}</div>
                   </div>
                   <div>
-                    {i.canEdit && <button className="btn" onClick={() => onEditItem(i)} >编辑</button>}
+                    {canModifyCadreActivity(i) && <button className="btn" onClick={() => onEditItem(i)} >编辑</button>}
+                    {canModifyCadreActivity(i) && <button className="btn" style={{ marginLeft: 8, background: '#ef4444' }} disabled={String(deletingId) === getActivityId(i)} onClick={() => onDeleteCadreItem(i)}>{deleteButtonText(i, deletingId)}</button>}
                   </div>
                 </div>
                 <div style={{ marginTop: 8 }}>{i.summary}</div>
@@ -584,7 +641,7 @@ export default function Activity() {
         <div style={{ marginTop: 12 }}>
           <button className="btn" onClick={onSubmit}>{saving ? '保存中...' : '保存'}</button>
           <button className="btn" style={{ marginLeft: 8, background: '#6b7280' }} onClick={() => {
-            setEditingId(''); setFormTitle(''); setFormDate(''); setFormSummary(''); setFormTargetTag(''); setFormOrganizers(''); setFormParticipants(''); setFormHelpers(''); setFormPhotoPaths([]); setFormPhotos([])
+            resetActivityForm()
           }}>重置</button>
         </div>
       </div>}
