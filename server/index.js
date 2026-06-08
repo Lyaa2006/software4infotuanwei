@@ -1676,6 +1676,28 @@ function normalizeAccountId(accountId) {
   return String(accountId ?? "").trim();
 }
 
+const STUDENT_ACCOUNT_ERROR = {
+  empty: "EMPTY_ACCOUNT",
+  notStudent: "NOT_STUDENT_ACCOUNT",
+  invalidStudent: "INVALID_STUDENT_ACCOUNT",
+  invalidActivityParticipant: "INVALID_ACTIVITY_PARTICIPANT",
+};
+
+const DEFAULT_NOT_STUDENT_MESSAGE = "目标账号不是学生账号，不能执行学生数据操作";
+
+function createStudentScopeError(code, message, status = 403, extra = {}) {
+  const err = new Error(code);
+  err.code = code;
+  err.messageText = message;
+  err.status = status;
+  err.extra = extra;
+  return err;
+}
+
+// Student identity must be checked against permitted_accounts instead of
+// party_students. party_students stores party/tag/profile data only and may
+// contain historical dirty rows created by older unguarded flows. Frontend
+// filtering improves display safety, but this backend check is the final guard.
 async function isStudentAccount(db, accountId) {
   const normalized = normalizeAccountId(accountId);
   if (!normalized) return false;
@@ -1686,42 +1708,45 @@ async function isStudentAccount(db, accountId) {
   return !!resp.rows?.length;
 }
 
-async function requireStudentAccount(db, accountId, message = "目标账号不是学生账号，不能执行学生数据操作") {
+async function requireStudentAccount(db, accountId, message = DEFAULT_NOT_STUDENT_MESSAGE) {
   const normalized = normalizeAccountId(accountId);
   if (!normalized) {
-    const err = new Error("EMPTY_ACCOUNT");
-    err.code = "EMPTY_ACCOUNT";
-    err.messageText = "缺少学号";
-    err.status = 400;
-    throw err;
+    throw createStudentScopeError(STUDENT_ACCOUNT_ERROR.empty, "缺少学号", 400);
   }
   if (await isStudentAccount(db, normalized)) return normalized;
-  const err = new Error("NOT_STUDENT_ACCOUNT");
-  err.code = "NOT_STUDENT_ACCOUNT";
-  err.messageText = message;
-  err.status = 403;
-  throw err;
+  throw createStudentScopeError(STUDENT_ACCOUNT_ERROR.notStudent, message, 403, { accountId: normalized });
 }
 
 function failStudentAccountError(res, err) {
-  if (err?.code === "EMPTY_ACCOUNT" || err?.code === "NOT_STUDENT_ACCOUNT") {
-    return fail(res, err.code, err.messageText || "目标账号不是学生账号，不能执行学生数据操作", err.status || 403);
+  const handled = new Set(Object.values(STUDENT_ACCOUNT_ERROR));
+  if (handled.has(err?.code)) {
+    return fail(res, err.code, err.messageText || DEFAULT_NOT_STUDENT_MESSAGE, err.status || 403);
   }
   return null;
 }
 
-async function filterStudentAccounts(db, accountIds) {
-  const normalized = normalizeStringArray((accountIds || []).map(normalizeAccountId));
-  if (!normalized.length) return [];
+function normalizeAccountIdList(accountIds) {
+  return normalizeStringArray((accountIds || []).map(normalizeAccountId));
+}
+
+async function fetchStudentAccountSet(db, accountIds) {
+  const normalized = normalizeAccountIdList(accountIds);
+  if (!normalized.length) return new Set();
   const resp = await db.query(
     "SELECT account_id FROM permitted_accounts WHERE role='student' AND enabled=TRUE AND account_id = ANY($1::varchar[])",
     [normalized],
   );
-  const allowed = new Set((resp.rows || []).map((r) => normalizeAccountId(r.account_id)).filter(Boolean));
+  return new Set((resp.rows || []).map((r) => normalizeAccountId(r.account_id)).filter(Boolean));
+}
+
+async function filterStudentAccounts(db, accountIds) {
+  const normalized = normalizeAccountIdList(accountIds);
+  if (!normalized.length) return [];
+  const allowed = await fetchStudentAccountSet(db, normalized);
   return normalized.filter((id) => allowed.has(id));
 }
 
-async function normalizeActivityParticipantRows(db, roleBuckets) {
+function normalizeActivityParticipantInput(roleBuckets) {
   const rows = [];
   for (const id of normalizeStringArray(roleBuckets?.organizers)) rows.push({ accountId: id, role: "organizer" });
   for (const id of normalizeStringArray(roleBuckets?.helpers)) rows.push({ accountId: id, role: "helper" });
@@ -1737,16 +1762,20 @@ async function normalizeActivityParticipantRows(db, roleBuckets) {
     uniq.add(key);
     normalizedRows.push({ accountId: aid, role: r.role });
   }
+  return normalizedRows;
+}
 
-  const checkedAccounts = await filterStudentAccounts(db, normalizedRows.map((r) => r.accountId));
-  const allowed = new Set(checkedAccounts);
+async function normalizeActivityParticipantRows(db, roleBuckets) {
+  const normalizedRows = normalizeActivityParticipantInput(roleBuckets);
+  const allowed = await fetchStudentAccountSet(db, normalizedRows.map((r) => r.accountId));
   const blocked = normalizedRows.map((r) => r.accountId).filter((id) => !allowed.has(id));
   if (blocked.length) {
-    const err = new Error("NOT_STUDENT_ACCOUNT");
-    err.code = "NOT_STUDENT_ACCOUNT";
-    err.messageText = "活动参与人必须是学生账号：" + Array.from(new Set(blocked)).join("、");
-    err.status = 403;
-    throw err;
+    throw createStudentScopeError(
+      STUDENT_ACCOUNT_ERROR.invalidActivityParticipant,
+      "活动参与人必须是学生账号：" + Array.from(new Set(blocked)).join("、"),
+      403,
+      { accountIds: Array.from(new Set(blocked)) },
+    );
   }
   return normalizedRows;
 }
@@ -4033,6 +4062,10 @@ async function main() {
   });
 
   async function handleActivityCadreDelete(req, res) {
+    // Delete is intentionally narrow: only the student who created the activity
+    // and still has the cadre tag may delete it, and approved activities remain
+    // immutable. This keeps student-side cleanup useful without giving admins or
+    // unrelated users a broad destructive operation.
     const accountId = normalizeAccountId(req.user?.accountId);
     if (req.user?.role !== "student") return fail(res, "NOT_STUDENT", "无学生权限", 403);
     if (!accountId) return fail(res, "EMPTY_ACCOUNT", "缺少学号");
@@ -4050,7 +4083,7 @@ async function main() {
       const row = existing.rows?.[0] || null;
       if (!row) return fail(res, "NOT_FOUND", "活动不存在", 404);
       const status = String(row.status ?? "");
-      if (status === "approved") return fail(res, "FORBIDDEN", "已通过审核的活动不可删除", 403);
+      if (status === "approved") return fail(res, "FORBIDDEN", "已通过审核的活动不可删除，请联系管理员处理后续更正", 403);
 
       const client = await pool.connect();
       try {
