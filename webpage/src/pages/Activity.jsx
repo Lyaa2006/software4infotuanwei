@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import { filterStudentAccountRecords } from '../utils/studentAccounts'
 
 function pad2(n) { return String(n).padStart(2, '0') }
 function formatYmd(ymd) {
@@ -62,6 +63,7 @@ export default function Activity() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [deletingId, setDeletingId] = useState('')
 
   const [editingId, setEditingId] = useState('')
   const [editingRejectReason, setEditingRejectReason] = useState('')
@@ -162,7 +164,7 @@ export default function Activity() {
   async function loadStudents() {
     try {
       const r = await api.featureApi.reminderAdminStudents()
-      const items = Array.isArray(r.items) ? r.items : []
+      const items = filterStudentAccountRecords(r.items)
       const mapped = items.map((x) => {
         const tags = Array.isArray(x.tags) ? x.tags : []
         const isCad = tags.includes('班团骨干')
@@ -279,6 +281,34 @@ export default function Activity() {
     } catch (e) { alert(e?.message || '操作失败') }
   }
 
+  async function onDeleteCadreItem(id) {
+    if (!id || deletingId) return
+    if (!window.confirm('确认删除该活动提案？删除后不可恢复。')) return
+    setDeletingId(String(id))
+    try {
+      await api.featureApi.activityCadreDelete({ id })
+      alert('已删除')
+      if (String(editingId) === String(id)) {
+        setEditingId('')
+        setEditingRejectReason('')
+        setFormTitle('')
+        setFormDate('')
+        setFormSummary('')
+        setFormTargetTag('')
+        setFormOrganizers('')
+        setFormParticipants('')
+        setFormHelpers('')
+        setFormPhotoPaths([])
+        setFormPhotos([])
+      }
+      await tryLoadCadreMine()
+    } catch (e) {
+      alert(e?.message || '删除失败')
+    } finally {
+      setDeletingId('')
+    }
+  }
+
   async function onReject(id) {
     if (!id) return
     const reason = prompt('驳回原因（可选）', '')
@@ -370,6 +400,7 @@ export default function Activity() {
                   </div>
                   <div>
                     {i.canEdit && <button className="btn" onClick={() => onEditItem(i)} >编辑</button>}
+                    {i.canEdit && <button className="btn" style={{ marginLeft: 8, background: '#ef4444' }} disabled={String(deletingId) === String(i._id || i.id)} onClick={() => onDeleteCadreItem(i._id || i.id)}>{String(deletingId) === String(i._id || i.id) ? '删除中...' : '删除'}</button>}
                   </div>
                 </div>
                 <div style={{ marginTop: 8 }}>{i.summary}</div>

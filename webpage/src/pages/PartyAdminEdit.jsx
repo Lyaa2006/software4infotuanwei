@@ -81,6 +81,7 @@ export default function PartyAdminEdit() {
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [blockedMessage, setBlockedMessage] = useState('')
   const [stages, setStages] = useState([])
   const [stagePickerIndex, setStagePickerIndex] = useState(0)
   const [today, setToday] = useState('')
@@ -112,6 +113,7 @@ export default function PartyAdminEdit() {
     if (loading) return
     setLoading(true)
     try {
+      setBlockedMessage('')
       const r = await api.featureApi.partyAdminStudentDetail({ accountId })
       const s = r.stages || []
       const p = r.profile || {}
@@ -135,7 +137,9 @@ export default function PartyAdminEdit() {
       setNextTalkTouched(false)
       setStagePickerIndex(stageIndex(s, nextProfile.currentStage))
     } catch (e) {
-      alert(e?.message || '加载失败')
+      const msg = e?.message || '加载失败'
+      if (e?.code === 'NOT_STUDENT_ACCOUNT') setBlockedMessage(msg)
+      else alert(msg)
     } finally {
       setLoading(false)
     }
@@ -178,7 +182,7 @@ export default function PartyAdminEdit() {
   }
 
   async function onSave() {
-    if (saving) return
+    if (saving || blockedMessage) return
     const invalidPartyDate = [
       ['入党申请时间', profile.applicationDate],
       ['确定为入党积极分子时间', profile.activistDate],
@@ -244,6 +248,12 @@ export default function PartyAdminEdit() {
       <h2>编辑学生：{accountId}</h2>
         <button className="btn btn-secondary back-home-btn" type="button" onClick={() => nav("/")}>返回首页</button>
       </div>
+      {blockedMessage ? (
+        <div className="card">
+          <p className="empty-state">{blockedMessage}</p>
+          <button className="btn" type="button" onClick={onBackToList}>返回列表</button>
+        </div>
+      ) : (
       <div className="card">
         <div style={{ marginBottom: 8 }}>
           <label>姓名: <input value={profile.name} onChange={onNameInput} /></label>
@@ -296,10 +306,11 @@ export default function PartyAdminEdit() {
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <button className="btn" onClick={onSave}>{saving ? '保存中...' : '保存'}</button>
+          <button className="btn" onClick={onSave} disabled={!!blockedMessage}>{saving ? '保存中...' : '保存'}</button>
           <button className="btn" style={{ marginLeft: 8 }} type="button" onClick={onBackToList}>返回列表</button>
         </div>
       </div>
+      )}
     </div>
   )
 }

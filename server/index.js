@@ -1676,6 +1676,81 @@ function normalizeAccountId(accountId) {
   return String(accountId ?? "").trim();
 }
 
+async function isStudentAccount(db, accountId) {
+  const normalized = normalizeAccountId(accountId);
+  if (!normalized) return false;
+  const resp = await db.query(
+    "SELECT 1 AS ok FROM permitted_accounts WHERE account_id=$1 AND role='student' AND enabled=TRUE LIMIT 1",
+    [normalized],
+  );
+  return !!resp.rows?.length;
+}
+
+async function requireStudentAccount(db, accountId, message = "目标账号不是学生账号，不能执行学生数据操作") {
+  const normalized = normalizeAccountId(accountId);
+  if (!normalized) {
+    const err = new Error("EMPTY_ACCOUNT");
+    err.code = "EMPTY_ACCOUNT";
+    err.messageText = "缺少学号";
+    err.status = 400;
+    throw err;
+  }
+  if (await isStudentAccount(db, normalized)) return normalized;
+  const err = new Error("NOT_STUDENT_ACCOUNT");
+  err.code = "NOT_STUDENT_ACCOUNT";
+  err.messageText = message;
+  err.status = 403;
+  throw err;
+}
+
+function failStudentAccountError(res, err) {
+  if (err?.code === "EMPTY_ACCOUNT" || err?.code === "NOT_STUDENT_ACCOUNT") {
+    return fail(res, err.code, err.messageText || "目标账号不是学生账号，不能执行学生数据操作", err.status || 403);
+  }
+  return null;
+}
+
+async function filterStudentAccounts(db, accountIds) {
+  const normalized = normalizeStringArray((accountIds || []).map(normalizeAccountId));
+  if (!normalized.length) return [];
+  const resp = await db.query(
+    "SELECT account_id FROM permitted_accounts WHERE role='student' AND enabled=TRUE AND account_id = ANY($1::varchar[])",
+    [normalized],
+  );
+  const allowed = new Set((resp.rows || []).map((r) => normalizeAccountId(r.account_id)).filter(Boolean));
+  return normalized.filter((id) => allowed.has(id));
+}
+
+async function normalizeActivityParticipantRows(db, roleBuckets) {
+  const rows = [];
+  for (const id of normalizeStringArray(roleBuckets?.organizers)) rows.push({ accountId: id, role: "organizer" });
+  for (const id of normalizeStringArray(roleBuckets?.helpers)) rows.push({ accountId: id, role: "helper" });
+  for (const id of normalizeStringArray(roleBuckets?.participants)) rows.push({ accountId: id, role: "participant" });
+
+  const uniq = new Set();
+  const normalizedRows = [];
+  for (const r of rows) {
+    const aid = normalizeAccountId(r.accountId);
+    if (!aid) continue;
+    const key = aid + "::" + r.role;
+    if (uniq.has(key)) continue;
+    uniq.add(key);
+    normalizedRows.push({ accountId: aid, role: r.role });
+  }
+
+  const checkedAccounts = await filterStudentAccounts(db, normalizedRows.map((r) => r.accountId));
+  const allowed = new Set(checkedAccounts);
+  const blocked = normalizedRows.map((r) => r.accountId).filter((id) => !allowed.has(id));
+  if (blocked.length) {
+    const err = new Error("NOT_STUDENT_ACCOUNT");
+    err.code = "NOT_STUDENT_ACCOUNT";
+    err.messageText = "活动参与人必须是学生账号：" + Array.from(new Set(blocked)).join("、");
+    err.status = 403;
+    throw err;
+  }
+  return normalizedRows;
+}
+
 async function getPartyStudentName(pool, accountId) {
   const id = normalizeAccountId(accountId);
   if (!id) return "";
@@ -1836,6 +1911,10 @@ async function resolveStudentAccountsByTags(db, tagValues) {
 async function ensurePartyStudentRowExists(pool, accountId, now) {
   const normalized = normalizeAccountId(accountId);
   if (!normalized) return;
+  // party_students is an extension/profile table. Historical dirty data or
+  // unguarded writes may contain admin accounts, so never use it as the source
+  // of truth for student identity. permitted_accounts is the role authority.
+  await requireStudentAccount(pool, normalized);
   const check = await pool.query("SELECT 1 AS ok FROM party_students WHERE account_id=$1 LIMIT 1", [normalized]);
   if (check.rows?.length) return;
   try {
@@ -2169,13 +2248,28 @@ async function main() {
   app.get("/api/party/admin/students", authRequired, adminRequired, async (req, res) => {
     try {
       const resp = await pool.query(
-        "SELECT account_id, name, current_stage, next_report_due, next_talk_due, updated_at FROM party_students ORDER BY updated_at DESC LIMIT 500",
+        `SELECT
+          p.account_id,
+          COALESCE(ps.name,'') AS name,
+          COALESCE(ps.tags, '[]'::jsonb) AS tags,
+          COALESCE(ps.current_stage, 'group_assessment') AS current_stage,
+          ps.next_report_due,
+          ps.next_talk_due,
+          COALESCE(ps.updated_at, 0) AS updated_at
+         FROM permitted_accounts p
+         LEFT JOIN party_students ps ON ps.account_id=p.account_id
+         WHERE p.role='student' AND p.enabled=TRUE
+         ORDER BY COALESCE(ps.updated_at, 0) DESC, p.account_id ASC
+         LIMIT 500`,
       );
       const items = (resp.rows || []).map((r) => {
         const stage = normalizePartyStage(r.current_stage);
         return {
           accountId: String(r.account_id ?? ""),
           name: String(r.name ?? ""),
+          role: "student",
+          isStudent: true,
+          tags: normalizeStringArray(r.tags),
           currentStage: stage,
           currentStageLabel: partyStageLabel(stage),
           currentStageIndex: partyStageIndex(stage),
@@ -2198,6 +2292,7 @@ async function main() {
     try {
       const accountId = normalizeAccountId(req.params.accountId);
       if (!accountId) return fail(res, "EMPTY_ACCOUNT", "缺少学号");
+      await requireStudentAccount(pool, accountId, "目标账号不是学生账号，不能编辑学生党团进度");
 
       const now = Date.now();
       await ensurePartyStudentRowExists(pool, accountId, now);
@@ -2207,6 +2302,7 @@ async function main() {
       if (!row) return fail(res, "NOT_FOUND", "学生信息不存在", 404);
       ok(res, { profile: mapPartyStudentRow(row), stages: PARTY_STAGES });
     } catch (e) {
+      if (failStudentAccountError(res, e)) return;
       if (String(e?.code || "") === "42P01") {
         fail(res, "SCHEMA_MISSING", "数据库表未初始化，请先执行 schema.sql", 500);
         return;
@@ -2219,6 +2315,7 @@ async function main() {
     try {
       const accountId = normalizeAccountId(req.params.accountId);
       if (!accountId) return fail(res, "EMPTY_ACCOUNT", "缺少学号");
+      await requireStudentAccount(pool, accountId, "目标账号不是学生账号，不能编辑学生党团进度");
 
       const name = String(req.body?.name ?? "").trim();
       const applicationDate = normalizeYmdInput(req.body?.applicationDate);
@@ -2349,6 +2446,7 @@ async function main() {
       const row = resp.rows?.[0] || null;
       ok(res, { profile: mapPartyStudentRow(row), stages: PARTY_STAGES });
     } catch (e) {
+      if (failStudentAccountError(res, e)) return;
       if (String(e?.code || "") === "42P01") {
         fail(res, "SCHEMA_MISSING", "数据库表未初始化，请先执行 schema.sql", 500);
         return;
@@ -2563,6 +2661,7 @@ async function main() {
     try {
       const accountId = normalizeAccountId(req.params.accountId);
       if (!accountId) return fail(res, "EMPTY_ACCOUNT", "缺少学号");
+      await requireStudentAccount(pool, accountId, "目标账号不是学生账号，不能编辑学生标签");
       const tags = normalizeStringArray(req.body?.tags);
       const now = Date.now();
       await ensurePartyStudentRowExists(pool, accountId, now);
@@ -2573,6 +2672,7 @@ async function main() {
       ]);
       ok(res, { ok: true });
     } catch (e) {
+      if (failStudentAccountError(res, e)) return;
       fail(res, "SERVER_ERROR", "服务器异常", 500);
     }
   });
@@ -2897,6 +2997,7 @@ async function main() {
         await browser.close();
       }
     } catch (e) {
+      if (failStudentAccountError(res, e)) return;
       const mapped = mapPdfErrorMessage(e);
       fail(res, mapped.code, mapped.message, 500);
     }
@@ -3620,6 +3721,7 @@ async function main() {
 
   app.get("/api/activity/me", authRequired, async (req, res) => {
     try {
+      if (req.user?.role !== "student") return ok(res, { items: [] });
       const accountId = normalizeAccountId(req.user?.accountId);
       if (!accountId) return fail(res, "EMPTY_ACCOUNT", "缺少学号");
 
@@ -3787,6 +3889,11 @@ async function main() {
       if (!finalParticipants.length && targetTags.length) {
         finalParticipants = await resolveStudentAccountsByTags(pool, targetTags);
       }
+      const normalizedRows = await normalizeActivityParticipantRows(pool, {
+        organizers,
+        helpers,
+        participants: finalParticipants,
+      });
 
       const now = Date.now();
       const client = await pool.connect();
@@ -3803,20 +3910,6 @@ async function main() {
         const activityId = Number(ins.rows?.[0]?.id || 0);
         if (!activityId) throw new Error("CREATE_ACTIVITY_FAILED");
 
-        const rows = [];
-        for (const id of organizers) rows.push({ accountId: id, role: "organizer" });
-        for (const id of helpers) rows.push({ accountId: id, role: "helper" });
-        for (const id of finalParticipants) rows.push({ accountId: id, role: "participant" });
-        const uniq = new Set();
-        const normalizedRows = [];
-        for (const r of rows) {
-          const aid = normalizeAccountId(r.accountId);
-          if (!aid) continue;
-          const key = `${aid}::${r.role}`;
-          if (uniq.has(key)) continue;
-          uniq.add(key);
-          normalizedRows.push({ accountId: aid, role: r.role });
-        }
         const chunkSize = 200;
         for (let i = 0; i < normalizedRows.length; i += chunkSize) {
           const chunk = normalizedRows.slice(i, i + chunkSize);
@@ -3844,6 +3937,7 @@ async function main() {
         client.release();
       }
     } catch (e) {
+      if (failStudentAccountError(res, e)) return;
       const mapped = mapActivityDbError(e);
       if (mapped) return fail(res, mapped.code, mapped.message, mapped.status);
       fail(res, "SERVER_ERROR", "服务器异常", 500);
@@ -3886,6 +3980,11 @@ async function main() {
       if (!finalParticipants.length && targetTags.length) {
         finalParticipants = await resolveStudentAccountsByTags(pool, targetTags);
       }
+      const normalizedRows = await normalizeActivityParticipantRows(pool, {
+        organizers,
+        helpers,
+        participants: finalParticipants,
+      });
 
       const now = Date.now();
       const client = await pool.connect();
@@ -3898,21 +3997,6 @@ async function main() {
         await client.query("DELETE FROM class_activity_rejections WHERE activity_id=$1", [id]);
         await client.query("DELETE FROM class_activity_reviews WHERE activity_id=$1", [id]);
         await client.query("DELETE FROM class_activity_participants WHERE activity_id=$1", [id]);
-
-        const rows = [];
-        for (const aid of organizers) rows.push({ accountId: aid, role: "organizer" });
-        for (const aid of helpers) rows.push({ accountId: aid, role: "helper" });
-        for (const aid of finalParticipants) rows.push({ accountId: aid, role: "participant" });
-        const uniq = new Set();
-        const normalizedRows = [];
-        for (const r of rows) {
-          const aid = normalizeAccountId(r.accountId);
-          if (!aid) continue;
-          const key = `${aid}::${r.role}`;
-          if (uniq.has(key)) continue;
-          uniq.add(key);
-          normalizedRows.push({ accountId: aid, role: r.role });
-        }
 
         const chunkSize = 200;
         for (let i = 0; i < normalizedRows.length; i += chunkSize) {
@@ -3941,6 +4025,7 @@ async function main() {
         client.release();
       }
     } catch (e) {
+      if (failStudentAccountError(res, e)) return;
       const mapped = mapActivityDbError(e);
       if (mapped) return fail(res, mapped.code, mapped.message, mapped.status);
       fail(res, "SERVER_ERROR", "服务器异常", 500);

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { collectAvailableTags, mapStudentTags, normalizeTagList, tagsToText } from '../utils/studentTags'
+import { filterStudentAccountRecords, isStudentAccountRecord } from '../utils/studentAccounts'
 
 export default function TagManagement() {
   const navigate = useNavigate()
@@ -29,7 +30,7 @@ export default function TagManagement() {
     setLoading(true)
     try {
       const r = await api.featureApi.reminderAdminStudents()
-      const list = Array.isArray(r.items) ? r.items : []
+      const list = filterStudentAccountRecords(r.items)
       setStudents(list.map(mapStudentTags))
     } catch (e) {
       alert(e?.message || '加载学生标签失败')
@@ -40,6 +41,7 @@ export default function TagManagement() {
   }
 
   function onEdit(student) {
+    if (!isStudentAccountRecord(student)) return alert('目标账号不是学生账号，不能编辑学生标签')
     const normalized = mapStudentTags(student)
     setEditingStudent(normalized)
     setEditingTagsText(normalized.tags.join(', '))
@@ -52,6 +54,7 @@ export default function TagManagement() {
 
   async function onSaveTags() {
     if (saving || !editingStudent?.accountId) return
+    if (!isStudentAccountRecord(editingStudent)) return alert('目标账号不是学生账号，不能编辑学生标签')
     const accountId = String(editingStudent.accountId || '').trim()
     const tags = normalizeTagList(editingTagsText)
     setSaving(true)

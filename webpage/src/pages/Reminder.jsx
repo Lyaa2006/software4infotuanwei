@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { collectAvailableTags, mapStudentTags, normalizeTagList } from '../utils/studentTags'
+import { filterStudentAccountRecords } from '../utils/studentAccounts'
 
 function pad2(n) { return String(n).padStart(2, '0') }
 function formatDateTime(ts) {
@@ -88,7 +89,7 @@ export default function Reminder() {
   async function loadAvailableTags() {
     try {
       const r = await api.featureApi.reminderAdminStudents()
-      const list = Array.isArray(r.items) ? r.items : []
+      const list = filterStudentAccountRecords(r.items)
       setAvailableTags(collectAvailableTags(list.map(mapStudentTags)))
     } catch (e) {
       setAvailableTags([])

@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import { filterStudentAccountRecords } from '../utils/studentAccounts'
 
 export default function PartyAdminList() {
   const [items, setItems] = useState([])
   const nav = useNavigate()
 
   useEffect(() => { load() }, [])
-  async function load() { try { const r = await api.featureApi.partyAdminStudents(); setItems(r.items || []) } catch (e) {} }
+  async function load() { try { const r = await api.featureApi.partyAdminStudents(); setItems(filterStudentAccountRecords(r.items)) } catch (e) { setItems([]) } }
 
   return (
     <div className="container">
