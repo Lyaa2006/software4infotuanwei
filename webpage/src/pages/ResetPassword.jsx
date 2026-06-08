@@ -1,14 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
-function useQuery() {
-  const { search } = useLocation()
-  return new URLSearchParams(search)
-}
-
 export default function ResetPassword() {
-  const query = useQuery()
+  const { search } = useLocation()
+  const query = useMemo(() => new URLSearchParams(search), [search])
   const nav = useNavigate()
   const session = api.auth.getSession()
 
