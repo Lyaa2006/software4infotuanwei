@@ -96,7 +96,7 @@ function buildFieldConfig(templateTitle, key) {
     hint: '',
   }
 
-  if (token.includes('date') || label.includes('日期')) {
+  if (token.includes('date') || token.includes('time') || label.includes('日期') || label.includes('时间')) {
     config.placeholder = 'YYYY-MM-DD'
     config.hint = '请输入真实存在的日期，格式为 YYYY-MM-DD，且不能晚于今天。'
     return config
@@ -161,7 +161,7 @@ function buildFieldConfig(templateTitle, key) {
     return config
   }
 
-  if (/(year|month|day|date|日期)/.test(token)) {
+  if (/(year|month|day|date|time|日期|时间)/.test(token)) {
     config.placeholder = 'YYYY-MM-DD'
     config.hint = '请输入真实存在的日期，格式为 YYYY-MM-DD。'
     return config
@@ -183,6 +183,8 @@ function validateManualFields(fields, templateTitle) {
     const value = normalizeText(field?.value)
     const label = String(field?.label || fieldLabel(field?.key))
     const config = buildFieldConfig(templateTitle, field?.key)
+    const keyToken = normalizeFieldToken(field?.key)
+    const isYmdField = config.placeholder === 'YYYY-MM-DD' || keyToken.includes('date') || keyToken.includes('time') || label.includes('日期') || label.includes('时间')
     if (!value) return `请填写${label}`
 
     if (config.options?.length && !config.options.includes(value)) {
@@ -193,11 +195,11 @@ function validateManualFields(fields, templateTitle) {
       return `${label}不能超过 ${config.maxLength} 字`
     }
 
-    if ((normalizeFieldToken(field?.key).includes('date') || label.includes('日期')) && !isValidYmd(value)) {
+    if (isYmdField && !isValidYmd(value)) {
       return `${label}格式错误或日期无效，应为真实的 YYYY-MM-DD`
     }
 
-    if ((normalizeFieldToken(field?.key).includes('date') || label.includes('日期')) && value > todayYmd) {
+    if (isYmdField && value > todayYmd) {
       return `${label}不能设置为未来日期`
     }
 
