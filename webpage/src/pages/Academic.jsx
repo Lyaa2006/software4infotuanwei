@@ -305,6 +305,9 @@ export default function Academic() {
 
   return (
     <div className="container">
+      <div style={{ marginBottom: 12 }}>
+        <button className="btn btn-secondary back-home-btn" type="button" onClick={() => nav('/')}>返回首页</button>
+      </div>
       <h2>学业情况分析</h2>
       {isStudent && <div className="card">
         <h3>学生视图</h3>
