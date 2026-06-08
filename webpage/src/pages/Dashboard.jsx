@@ -7,7 +7,7 @@ const featureGroups = [
     title: '常用服务',
     items: [
       { key: 'policyQA', title: '智能政策问答', desc: '快速检索奖助、评优、党团等常见政策问题。' },
-      { key: 'reminder', title: '学院公告与提醒', desc: '查看学院通知，管理员可面向学生标签发布消息。' },
+      { key: 'reminder', title: '学院公告与提醒', desc: '查看学院通知，管理员可按学生标签发送消息。' },
     ],
   },
   {
@@ -49,7 +49,7 @@ export default function Dashboard() {
       const resp = await api.featureApi.academicPlans()
       setPlans(resp.items || [])
     } catch (e) {
-      // keep silent for scaffold
+      // ignore
     }
   }
 
@@ -66,12 +66,17 @@ export default function Dashboard() {
       return nav('/party/student')
     }
     if (key === 'reminder') return nav('/reminder')
-  if (key === 'certificate') return nav('/certificate')
+    if (key === 'certificate') return nav('/certificate')
     if (key === 'honor') return nav('/honor')
     if (key === 'activity') return nav('/activity')
     if (key === 'tagManagement') return nav('/tag-management')
-  if (key === 'academic') return nav('/academic')
+    if (key === 'academic') return nav('/academic')
     alert(`${key} 开发中`)
+  }
+
+  function onOpenProfile() {
+    const session = api.auth.getSession()
+    if (session?.role === 'student') nav('/profile')
   }
 
   return (
@@ -82,7 +87,14 @@ export default function Dashboard() {
           <p className="page-subtitle">集中处理学生服务、党团流程、证明材料、学业分析和学院通知。</p>
         </div>
         <div className="dashboard-user">
-          {user && <span className="badge">{user.accountId} · {user.role === 'admin' ? '管理员' : '学生'}</span>}
+          {user && user.role === 'student' && (
+            <button className="badge" type="button" onClick={onOpenProfile}>
+              学生 · {user.accountId}
+            </button>
+          )}
+          {user && user.role !== 'student' && (
+            <span className="badge">{user.accountId} · {user.role === 'admin' ? '管理员' : '学生'}</span>
+          )}
           <button className="btn btn-secondary" onClick={logout}>退出登录</button>
         </div>
       </header>
@@ -91,15 +103,15 @@ export default function Dashboard() {
         <div className="section-heading">
           <div>
             <h2 className="section-title">功能入口</h2>
-            <p className="section-note">按使用场景分组，保留原有入口和跳转路径。</p>
+            <p className="section-note">按使用场景分组，保留现有入口和跳转路径。</p>
           </div>
         </div>
 
         <div className="action-grid">
-          {featureGroups.map(group => (
+          {featureGroups.map((group) => (
             <div className="feature-group" key={group.title}>
               <h3 className="feature-group-title">{group.title}</h3>
-              {group.items.map(item => (
+              {group.items.map((item) => (
                 <button
                   key={item.key}
                   className="feature-card"
@@ -128,7 +140,7 @@ export default function Dashboard() {
 
         {plans.length ? (
           <ul className="plan-list">
-            {plans.map(p => <li key={p.id || p._id || p.name}>{p.name || p.title || JSON.stringify(p)}</li>)}
+            {plans.map((p) => <li key={p.id || p._id || p.name}>{p.name || p.title || JSON.stringify(p)}</li>)}
           </ul>
         ) : (
           <p className="empty-state">暂无学业计划数据，可能是后端未配置或当前账号暂无可见方案。</p>

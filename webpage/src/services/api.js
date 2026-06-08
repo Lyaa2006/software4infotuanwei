@@ -84,6 +84,15 @@ async function loginWithAccount({ role, accountId, password }) {
   return { user: data.user, isNew: data.isNew }
 }
 
+async function resetPassword({ role, accountId, newPassword, confirmPassword }) {
+  return await request({
+    method: 'POST',
+    path: '/api/auth/reset-password',
+    data: { role, accountId, newPassword, confirmPassword },
+    auth: false,
+  })
+}
+
 function buildQuery(params) {
   const parts = []
   for (const [k, v] of Object.entries(params || {})) {
@@ -104,6 +113,7 @@ async function uploadFile(path, file, fieldName = 'file', extra = {}) {
 }
 
 const featureApi = {
+  async authMe() { return await request({ method: 'GET', path: '/api/auth/me', auth: true }) },
   async intelligentPolicyQA({ question }) { return await request({ method: 'POST', path: '/api/qa/ask', data: { question: String(question ?? '') }, auth: true }) },
   async knowledgeQaList() { return await request({ method: 'GET', path: '/api/qa', auth: true }) },
   async knowledgeQaUpsert({ id, question, answer, keywords }) {
@@ -161,5 +171,5 @@ const featureApi = {
   async activityCadreUpload(file) { return await uploadFile('/api/activity/cadre/upload', file, 'file') },
 }
 
-export default { getBaseUrl, j, auth: { loginWithAccount, getSession, logout, setSession }, featureApi }
+export default { getBaseUrl, j, auth: { loginWithAccount, resetPassword, getSession, logout, setSession }, featureApi }
 export { getSession, logout }

@@ -23,6 +23,11 @@ export default function Login() {
     }
   }
 
+  function onForgotPassword() {
+    const query = accountId.trim() ? `?accountId=${encodeURIComponent(accountId.trim())}` : ''
+    navigate(`/reset-password${query}`)
+  }
+
   return (
     <main className="login-shell">
       <section className="login-card">
@@ -41,12 +46,12 @@ export default function Login() {
 
         <div className="login-panel">
           <h2>账号登录</h2>
-          <p className="page-subtitle">请选择身份并使用学工号或管理员账号进入系统。</p>
+          <p className="page-subtitle">请选择身份，并使用学号或管理员账号进入系统。</p>
 
           <form onSubmit={onSubmit}>
             <div className="form-row">
               <label htmlFor="login-role">角色</label>
-              <select id="login-role" className="input" value={role} onChange={e => setRole(e.target.value)}>
+              <select id="login-role" className="input" value={role} onChange={(e) => setRole(e.target.value)}>
                 <option value="student">学生</option>
                 <option value="admin">管理员</option>
               </select>
@@ -58,7 +63,7 @@ export default function Login() {
                 className="input"
                 value={accountId}
                 autoComplete="username"
-                onChange={e => setAccountId(e.target.value)}
+                onChange={(e) => setAccountId(e.target.value)}
               />
             </div>
             <div className="form-row">
@@ -69,9 +74,14 @@ export default function Login() {
                 type="password"
                 value={password}
                 autoComplete="current-password"
-                onChange={e => setPassword(e.target.value)}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </div>
+            {role === 'student' && (
+              <div className="form-row" style={{ marginTop: -4 }}>
+                <button className="link-button" type="button" onClick={onForgotPassword}>忘记密码？</button>
+              </div>
+            )}
             <button className="btn login-submit" type="submit" disabled={loading}>
               {loading ? '登录中...' : '登录'}
             </button>

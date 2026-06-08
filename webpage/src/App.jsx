@@ -7,6 +7,8 @@ import Activity from './pages/Activity'
 import Certificate from './pages/Certificate'
 import Honor from './pages/Honor'
 import HonorProfile from './pages/HonorProfile'
+import StudentProfile from './pages/StudentProfile'
+import ResetPassword from './pages/ResetPassword'
 import PartyStudent from './pages/PartyStudent'
 import PartyAdminList from './pages/PartyAdminList'
 import PartyAdminEdit from './pages/PartyAdminEdit'
@@ -38,6 +40,8 @@ export default function App() {
       <Route path="/certificate" element={<RequireAuth><Certificate /></RequireAuth>} />
       <Route path="/honor" element={<RequireAuth><Honor /></RequireAuth>} />
       <Route path="/honor/:accountId" element={<RequireAuth><HonorProfile /></RequireAuth>} />
+      <Route path="/profile" element={<RequireAuth><StudentProfile /></RequireAuth>} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/party/student" element={<RequireAuth><PartyStudent /></RequireAuth>} />
       <Route path="/party/admin/list" element={<RequireAuth><PartyAdminList /></RequireAuth>} />
       <Route path="/party/admin/edit/:accountId" element={<RequireAuth><PartyAdminEdit /></RequireAuth>} />

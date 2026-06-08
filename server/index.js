@@ -1655,6 +1655,17 @@ function normalizeAccountId(accountId) {
   return String(accountId ?? "").trim();
 }
 
+async function getPartyStudentName(pool, accountId) {
+  const id = normalizeAccountId(accountId);
+  if (!id) return "";
+  try {
+    const resp = await pool.query("SELECT COALESCE(name,'') AS name FROM party_students WHERE account_id=$1 LIMIT 1", [id]);
+    return String(resp.rows?.[0]?.name ?? "").trim();
+  } catch {
+    return "";
+  }
+}
+
 function sha256Hex(input) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
@@ -1901,6 +1912,64 @@ async function main() {
         exp: now + TOKEN_EXPIRES_MS,
       });
       ok(res, { token, isNew, loginAt: now, user: { role, accountId } });
+    } catch (e) {
+      fail(res, "SERVER_ERROR", "服务器异常", 500);
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const role = normalizeRole(req.body?.role);
+      const accountId = normalizeAccountId(req.body?.accountId);
+      const newPassword = String(req.body?.newPassword ?? "");
+      const confirmPassword = String(req.body?.confirmPassword ?? "");
+      if (role !== "student") return fail(res, "NOT_STUDENT", "当前仅支持学生重置密码", 403);
+      if (!accountId) return fail(res, "EMPTY_ACCOUNT", "请输入学号");
+      if (!newPassword) return fail(res, "EMPTY_PASSWORD", "请输入新密码");
+      if (newPassword.length < 6) return fail(res, "WEAK_PASSWORD", "新密码长度不能少于6位");
+      if (newPassword !== confirmPassword) return fail(res, "PASSWORD_MISMATCH", "两次输入的新密码不一致");
+
+      const perm = await pool.query(
+        "SELECT id FROM permitted_accounts WHERE role=$1 AND account_id=$2 AND enabled=TRUE LIMIT 1",
+        [role, accountId],
+      );
+      if (!perm.rows.length) return fail(res, "NOT_PERMITTED", "该学号不在权限清单中", 403);
+
+      const userQuery = await pool.query(
+        "SELECT id FROM users WHERE role=$1 AND account_id=$2 LIMIT 1",
+        [role, accountId],
+      );
+
+      const now = Date.now();
+      const salt = crypto.randomBytes(16).toString("hex");
+      const passwordHash = hashPassword(newPassword, salt);
+      let isNew = false;
+
+      if (!userQuery.rows.length) {
+        await pool.query(
+          "INSERT INTO users (role, account_id, password_hash, salt, created_at, last_login_at) VALUES ($1,$2,$3,$4,$5,$5)",
+          [role, accountId, passwordHash, salt, now],
+        );
+        isNew = true;
+      } else {
+        await pool.query(
+          "UPDATE users SET password_hash=$1, salt=$2, last_login_at=$3 WHERE id=$4",
+          [passwordHash, salt, now, userQuery.rows[0].id],
+        );
+      }
+
+      ok(res, { ok: true, accountId, isNew });
+    } catch (e) {
+      fail(res, "SERVER_ERROR", "服务器异常", 500);
+    }
+  });
+
+  app.get("/api/auth/me", authRequired, async (req, res) => {
+    try {
+      const role = normalizeRole(req.user?.role);
+      const accountId = normalizeAccountId(req.user?.accountId);
+      const name = role === "student" ? await getPartyStudentName(pool, accountId) : "";
+      ok(res, { user: { role, accountId, name } });
     } catch (e) {
       fail(res, "SERVER_ERROR", "服务器异常", 500);
     }
