@@ -7,6 +7,7 @@ export default function ResetPassword() {
   const query = useMemo(() => new URLSearchParams(search), [search])
   const nav = useNavigate()
   const session = api.auth.getSession()
+  const fromProfile = query.get('mode') === 'self' && session?.role === 'student'
 
   const [accountId, setAccountId] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -19,13 +20,13 @@ export default function ResetPassword() {
     setAccountId(fromQuery || fallback)
   }, [query, session?.accountId, session?.role])
 
-  async function onSubmit(e) {
-    e.preventDefault()
+  async function onSubmit(event) {
+    event.preventDefault()
     if (saving) return
     const id = String(accountId || '').trim()
     if (!id) return alert('请输入学号')
     if (!newPassword) return alert('请输入新密码')
-    if (newPassword.length < 6) return alert('新密码长度不能少于6位')
+    if (newPassword.length < 6) return alert('新密码长度不能少于 6 位')
     if (newPassword !== confirmPassword) return alert('两次输入的新密码不一致')
     setSaving(true)
     try {
@@ -45,23 +46,31 @@ export default function ResetPassword() {
       <header className="page-header">
         <div>
           <h1 className="page-title">重置密码</h1>
-          <p className="page-subtitle">当前为网页端最简版本，不启用邮箱验证码，输入学号与两次新密码即可完成重置。</p>
+          <p className="page-subtitle">
+            当前为网页端最简版本，暂未启用邮箱验证码。输入学号和两次新密码即可完成重置。
+          </p>
         </div>
+        {fromProfile ? (
+          <div className="dashboard-user">
+            <button className="btn btn-secondary back-home-btn" type="button" onClick={() => nav('/profile')}>返回个人主页</button>
+            <button className="btn btn-secondary back-home-btn" type="button" onClick={() => nav('/')}>返回首页</button>
+          </div>
+        ) : null}
       </header>
 
       <section className="section-card">
         <form onSubmit={onSubmit}>
           <div className="form-row">
             <label className="form-label" htmlFor="reset-account">学号</label>
-            <input id="reset-account" className="input" value={accountId} onChange={(e) => setAccountId(e.target.value)} autoComplete="username" />
+            <input id="reset-account" className="input" value={accountId} onChange={(event) => setAccountId(event.target.value)} autoComplete="username" />
           </div>
           <div className="form-row">
             <label className="form-label" htmlFor="reset-password">新密码</label>
-            <input id="reset-password" className="input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" />
+            <input id="reset-password" className="input" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" />
           </div>
           <div className="form-row">
             <label className="form-label" htmlFor="reset-password-confirm">确认新密码</label>
-            <input id="reset-password-confirm" className="input" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
+            <input id="reset-password-confirm" className="input" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" />
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <button className="btn" type="submit" disabled={saving}>{saving ? '提交中...' : '确认重置密码'}</button>

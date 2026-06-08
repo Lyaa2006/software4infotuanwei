@@ -305,7 +305,7 @@ export default function Academic() {
 
   return (
     <div className="container">
-      <div style={{ marginBottom: 12 }}>
+      <div className="page-header" style={{ justifyContent: 'flex-end', marginBottom: 12 }}>
         <button className="btn btn-secondary back-home-btn" type="button" onClick={() => nav('/')}>返回首页</button>
       </div>
       <h2>学业情况分析</h2>
