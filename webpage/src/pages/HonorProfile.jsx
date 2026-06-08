@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
+const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp'
+const IMAGE_MAX_BYTES = 5 * 1024 * 1024
+
 function isValidYmd(value) {
   const s = String(value ?? '').trim()
   if (!s) return false
@@ -9,6 +12,28 @@ function isValidYmd(value) {
   const [y, m, d] = s.split('-').map(Number)
   const dt = new Date(Date.UTC(y, m - 1, d))
   return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d
+}
+
+function localTodayYmd() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function validateImageFile(file) {
+  if (!file) return '未选择图片文件'
+  const type = String(file.type || '').toLowerCase()
+  const name = String(file.name || '').toLowerCase()
+  const allowedTypes = new Set(['image/png', 'image/jpeg', 'image/webp'])
+  const allowedExts = ['.png', '.jpg', '.jpeg', '.webp']
+  const typeOk = allowedTypes.has(type)
+  const extOk = allowedExts.some((ext) => name.endsWith(ext))
+  if (!typeOk && !extOk) return '仅支持 PNG、JPG、JPEG、WEBP 图片'
+  if (Number(file.size || 0) <= 0) return '图片文件不能为空'
+  if (Number(file.size || 0) > IMAGE_MAX_BYTES) return '图片不能超过 5MB'
+  return ''
 }
 
 export default function HonorProfile() {
@@ -32,45 +57,41 @@ export default function HonorProfile() {
 
   async function load() {
     try {
-      const r = await api.featureApi.honorUserDetail({ accountId })
+      const session = api.auth.getSession()
+      const editable = session?.role === 'student' && String(session?.accountId) === String(accountId)
+      const [r, me] = editable
+        ? await Promise.all([
+          api.featureApi.honorMyList(),
+          api.featureApi.authMe().catch(() => null),
+        ])
+        : [await api.featureApi.honorUserDetail({ accountId }), null]
       const baseUrl = api.getBaseUrl() || ''
       const mapped = (r.items || []).map((x) => ({ ...x, imageUrl: x.imagePath ? `${baseUrl}${x.imagePath}` : '' }))
       setItems(mapped)
-      const user = r.user || {}
-      const nameText = String(user.name || '').trim() ? String(user.name || '').trim() : String(user.accountId || accountId || '')
+      const user = editable ? (me?.user || {}) : (r.user || {})
+      const fallbackTitle = editable ? String(session?.accountId || accountId || '') : String(accountId || '')
+      const nameText = String(user.name || '').trim() ? String(user.name || '').trim() : String(user.accountId || fallbackTitle || '')
       setUserTitle(nameText ? `${nameText} 的荣誉主页` : '')
-      const session = api.auth.getSession()
-      setIsEditable(session?.role === 'student' && String(session?.accountId) === String(accountId))
+      setIsEditable(editable)
     } catch (e) {}
   }
 
   async function onUploadImage(e) {
     const file = (e.target.files || [])[0]
     if (!file) return
-    const uploadDisabled = true
-    if (uploadDisabled) {
-      alert('图片上传功能暂未开放')
+    const invalid = validateImageFile(file)
+    if (invalid) {
+      alert(invalid)
       e.target.value = ''
       return
     }
     if (uploading) return
     setUploading(true)
     try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const session = api.auth.getSession()
-      const url = `${api.getBaseUrl() || ''}/api/honor/me/upload`
-      const opts = { method: 'POST', headers: {}, body: fd }
-      if (session?.token) opts.headers.Authorization = `Bearer ${session.token}`
-      const res = await fetch(url, opts)
-      const text = await res.text()
-      const obj = JSON.parse(text)
-      if (!obj?.success) throw new Error(obj?.message || '上传失败')
-      const parsed = obj
+      const parsed = await api.featureApi.honorMyUpload(file)
       alert('图片上传成功')
-      setFormImagePath(parsed.data?.path || '')
-      setImageUrl(parsed.data?.path ? `${api.getBaseUrl() || ''}${parsed.data?.path}` : '')
-      await load()
+      setFormImagePath(parsed?.path || '')
+      setImageUrl(parsed?.path ? `${api.getBaseUrl() || ''}${parsed.path}` : '')
     } catch (err) {
       alert(err?.message || '上传失败')
     } finally {
@@ -120,6 +141,7 @@ export default function HonorProfile() {
     const title = String(formTitle || '').trim()
     if (!title) return alert('请填写荣誉名称')
     if (formHonorDate && !isValidYmd(formHonorDate)) return alert('日期格式错误或日期无效，应为真实的 YYYY-MM-DD')
+    if (formHonorDate && formHonorDate > localTodayYmd()) return alert('荣誉日期不能设置为未来日期')
     setSaving(true)
     try {
       if (editingId) {
@@ -174,7 +196,8 @@ export default function HonorProfile() {
               <input className="input" placeholder="荣誉日期 YYYY-MM-DD" value={formHonorDate} onChange={(e) => setFormHonorDate(e.target.value)} />
             </div>
             <div style={{ marginTop: 8 }}>
-              <label className="btn">上传荣誉图片<input type="file" style={{ display: 'none' }} onChange={onUploadImage} /></label>
+              <label className="btn">{uploading ? '上传中...' : '上传荣誉图片'}<input type="file" accept={IMAGE_ACCEPT} style={{ display: 'none' }} onChange={onUploadImage} /></label>
+              <button className="btn" style={{ marginLeft: 8, background: '#6b7280' }} onClick={() => { setFormImagePath(''); setImageUrl('') }} disabled={uploading || !formImagePath}>清除图片</button>
               <button className="btn" style={{ marginLeft: 8 }} onClick={onSave}>{saving ? '保存中...' : '保存'}</button>
               <button className="btn" style={{ marginLeft: 8, background: '#6b7280' }} onClick={onResetForm}>重置</button>
             </div>
@@ -183,7 +206,7 @@ export default function HonorProfile() {
         )}
 
         <h3>荣誉列表</h3>
-        {!items.length && <p className="empty-state">暂无公开荣誉。</p>}
+        {!items.length && <p className="empty-state">{isEditable ? '你还没有添加荣誉记录。' : '暂无公开荣誉。'}</p>}
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {items.map((i) => (
             <li key={i._id || i.id} style={{ padding: 10, borderBottom: '1px solid #f0f0f0' }}>

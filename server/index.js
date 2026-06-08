@@ -739,6 +739,27 @@ function safeFileBaseName(name) {
   return s || "file";
 }
 
+function normalizeMimeType(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isAllowedImageUpload({ filename, mimeType }) {
+  const ext = path.extname(String(filename ?? "")).toLowerCase();
+  const mime = normalizeMimeType(mimeType);
+  const allowedExts = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+  const allowedMimes = new Set(["image/png", "image/jpeg", "image/webp"]);
+  return allowedExts.has(ext) || allowedMimes.has(mime);
+}
+
+function buildImageStoredExt({ filename, mimeType }) {
+  const ext = path.extname(String(filename ?? "")).toLowerCase();
+  if (ext === ".png" || ext === ".jpg" || ext === ".jpeg" || ext === ".webp") return ext;
+  const mime = normalizeMimeType(mimeType);
+  if (mime === "image/png") return ".png";
+  if (mime === "image/webp") return ".webp";
+  return ".jpg";
+}
+
 function decodeHtmlEntities(input) {
   return String(input ?? "")
     .replace(/&nbsp;/gi, " ")
@@ -3067,13 +3088,24 @@ async function main() {
       const busboy = Busboy({ headers: req.headers, limits: { fileSize: 5 * 1024 * 1024, files: 1 } });
       let savedRel = "";
       let gotFile = false;
+      let failed = false;
+
+      function failOnce(code, message, status = 400) {
+        if (failed) return true;
+        failed = true;
+        fail(res, code, message, status);
+        return true;
+      }
 
       busboy.on("file", (fieldname, file, info) => {
         gotFile = true;
         const filename = safeFileBaseName(info?.filename || "image");
-        const ext = path.extname(filename).toLowerCase();
-        const allowed = new Set([".png", ".jpg", ".jpeg", ".webp"]);
-        const finalExt = allowed.has(ext) ? ext : ".jpg";
+        if (!isAllowedImageUpload({ filename, mimeType: info?.mimeType })) {
+          file.resume();
+          failOnce("INVALID_FILE_TYPE", "仅支持 PNG、JPG、JPEG、WEBP 图片");
+          return;
+        }
+        const finalExt = buildImageStoredExt({ filename, mimeType: info?.mimeType });
         const stamp = Date.now();
         const rand = crypto.randomBytes(6).toString("hex");
         const stored = `${accountId}_${stamp}_${rand}${finalExt}`;
@@ -3081,14 +3113,27 @@ async function main() {
         const full = resolveStoragePath(rel);
         if (!full) {
           file.resume();
+          failOnce("INVALID_PATH", "文件保存路径无效", 500);
           return;
         }
         savedRel = `/${rel}`;
         const ws = fs.createWriteStream(full);
+        file.on("limit", () => {
+          ws.destroy();
+          failOnce("FILE_TOO_LARGE", "图片不能超过 5MB");
+        });
+        file.on("error", () => {
+          ws.destroy();
+          failOnce("UPLOAD_FAILED", "图片上传失败", 500);
+        });
+        ws.on("error", () => {
+          failOnce("UPLOAD_FAILED", "图片上传失败", 500);
+        });
         file.pipe(ws);
       });
 
       busboy.on("finish", () => {
+        if (failed) return;
         if (!gotFile || !savedRel) {
           fail(res, "EMPTY_FILE", "未选择图片文件", 400);
           return;
@@ -3096,6 +3141,12 @@ async function main() {
         ok(res, { path: savedRel });
       });
 
+      busboy.on("filesLimit", () => {
+        failOnce("FILE_COUNT_EXCEEDED", "一次只能上传 1 张图片");
+      });
+      busboy.on("error", () => {
+        failOnce("UPLOAD_FAILED", "图片上传失败", 500);
+      });
       req.pipe(busboy);
     } catch (e) {
       fail(res, "SERVER_ERROR", "服务器异常", 500);
@@ -4230,13 +4281,24 @@ async function main() {
       const busboy = Busboy({ headers: req.headers, limits: { fileSize: 6 * 1024 * 1024, files: 1 } });
       let savedRel = "";
       let gotFile = false;
+      let failed = false;
+
+      function failOnce(code, message, status = 400) {
+        if (failed) return true;
+        failed = true;
+        fail(res, code, message, status);
+        return true;
+      }
 
       busboy.on("file", (fieldname, file, info) => {
         gotFile = true;
         const filename = safeFileBaseName(info?.filename || "image");
-        const ext = path.extname(filename).toLowerCase();
-        const allowed = new Set([".png", ".jpg", ".jpeg", ".webp"]);
-        const finalExt = allowed.has(ext) ? ext : ".jpg";
+        if (!isAllowedImageUpload({ filename, mimeType: info?.mimeType })) {
+          file.resume();
+          failOnce("INVALID_FILE_TYPE", "仅支持 PNG、JPG、JPEG、WEBP 图片");
+          return;
+        }
+        const finalExt = buildImageStoredExt({ filename, mimeType: info?.mimeType });
         const stamp = Date.now();
         const rand = crypto.randomBytes(6).toString("hex");
         const stored = `${accountId}_${stamp}_${rand}${finalExt}`;
@@ -4244,14 +4306,27 @@ async function main() {
         const full = resolveStoragePath(rel);
         if (!full) {
           file.resume();
+          failOnce("INVALID_PATH", "文件保存路径无效", 500);
           return;
         }
         savedRel = `/${rel}`;
         const ws = fs.createWriteStream(full);
+        file.on("limit", () => {
+          ws.destroy();
+          failOnce("FILE_TOO_LARGE", "图片不能超过 6MB");
+        });
+        file.on("error", () => {
+          ws.destroy();
+          failOnce("UPLOAD_FAILED", "图片上传失败", 500);
+        });
+        ws.on("error", () => {
+          failOnce("UPLOAD_FAILED", "图片上传失败", 500);
+        });
         file.pipe(ws);
       });
 
       busboy.on("finish", () => {
+        if (failed) return;
         if (!gotFile || !savedRel) {
           fail(res, "EMPTY_FILE", "未选择图片文件", 400);
           return;
@@ -4259,6 +4334,12 @@ async function main() {
         ok(res, { path: savedRel });
       });
 
+      busboy.on("filesLimit", () => {
+        failOnce("FILE_COUNT_EXCEEDED", "一次只能上传 1 张图片");
+      });
+      busboy.on("error", () => {
+        failOnce("UPLOAD_FAILED", "图片上传失败", 500);
+      });
       req.pipe(busboy);
     } catch (e) {
       const mapped = mapActivityDbError(e);
