@@ -81,7 +81,7 @@ export default function Dashboard() {
 
   return (
     <main className="page-shell">
-      <header className="page-header">
+      <header className="page-header dashboard-hero">
         <div>
           <h1 className="page-title">信息学院学生综合服务与党团管理平台</h1>
           <p className="page-subtitle">集中处理学生服务、党团流程、证明材料、学业分析和学院通知。</p>
@@ -99,15 +99,15 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <section className="section-card">
-        <div className="section-heading">
+      <section className="section-card dashboard-entry-card">
+        <div className="section-heading dashboard-section-heading">
           <div>
             <h2 className="section-title">功能入口</h2>
-            <p className="section-note">按使用场景分组，保留现有入口和跳转路径。</p>
+            <p className="section-note">常用服务已按事务类型整理，点击卡片即可进入。</p>
           </div>
         </div>
 
-        <div className="action-grid">
+        <div className="action-grid dashboard-action-grid">
           {featureGroups.map((group) => (
             <div className="feature-group" key={group.title}>
               <h3 className="feature-group-title">{group.title}</h3>
@@ -122,7 +122,7 @@ export default function Dashboard() {
                     <span className="feature-title">{item.title}</span>
                     <span className="feature-desc">{item.desc}</span>
                   </span>
-                  <span className="feature-arrow">进入</span>
+                  <span className="feature-arrow" aria-hidden="true">进入</span>
                 </button>
               ))}
             </div>

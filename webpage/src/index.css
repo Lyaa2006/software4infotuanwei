@@ -756,3 +756,103 @@ textarea:focus {
     width: 52px;
   }
 }
+
+/* Dashboard UI polish: homepage structure and entry cards */
+.dashboard-hero {
+  position: relative;
+  align-items: center;
+  margin-bottom: 22px;
+  border: 1px solid rgba(219, 228, 238, 0.86);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(29, 78, 216, 0.10), rgba(15, 118, 110, 0.08)),
+    rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-soft);
+  padding: 28px;
+}
+
+.dashboard-hero .page-title {
+  max-width: 860px;
+  letter-spacing: 0;
+}
+
+.dashboard-hero .page-subtitle {
+  max-width: 780px;
+  color: #475569;
+}
+
+.dashboard-entry-card {
+  padding: 26px;
+}
+
+.dashboard-section-heading {
+  border-bottom: 1px solid rgba(219, 228, 238, 0.86);
+  padding-bottom: 16px;
+}
+
+.dashboard-action-grid {
+  gap: 18px;
+  align-items: stretch;
+}
+
+.dashboard-action-grid .feature-group {
+  min-height: 100%;
+  border: 1px solid rgba(219, 228, 238, 0.72);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.72);
+  padding: 14px;
+}
+
+.dashboard-action-grid .feature-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-action-grid .feature-group-title::before {
+  content: '';
+  width: 4px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.dashboard-action-grid .feature-card {
+  border-color: rgba(219, 228, 238, 0.92);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.03);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease, background 0.18s ease;
+}
+
+.dashboard-action-grid .feature-card:hover {
+  border-color: rgba(29, 78, 216, 0.48);
+  background: #fbfdff;
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.10);
+}
+
+.dashboard-action-grid .feature-card:focus-visible {
+  outline: none;
+  border-color: rgba(29, 78, 216, 0.72);
+  box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.13), 0 16px 34px rgba(15, 23, 42, 0.10);
+}
+
+.dashboard-action-grid .feature-arrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+@media (max-width: 820px) {
+  .dashboard-hero,
+  .dashboard-entry-card {
+    padding: 22px;
+  }
+
+  .dashboard-action-grid .feature-group {
+    padding: 12px;
+  }
+}
