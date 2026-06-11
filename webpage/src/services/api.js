@@ -55,6 +55,7 @@ async function request({ method = 'GET', path = '/', data = null, auth = true })
       err.code = obj?.code || 'REQUEST_FAILED'
       err.status = res.status
       err.debug = obj?.debug
+      Object.assign(err, obj || {})
       throw err
     }
     return obj.data
@@ -89,6 +90,24 @@ async function resetPassword({ role, accountId, newPassword, confirmPassword }) 
     method: 'POST',
     path: '/api/auth/reset-password',
     data: { role, accountId, newPassword, confirmPassword },
+    auth: false,
+  })
+}
+
+async function sendResetPasswordCode({ role = 'student', accountId }) {
+  return await request({
+    method: 'POST',
+    path: '/api/auth/reset-password/send-code',
+    data: { role, accountId },
+    auth: false,
+  })
+}
+
+async function resetPasswordByCode({ role = 'student', accountId, code, newPassword, confirmPassword }) {
+  return await request({
+    method: 'POST',
+    path: '/api/auth/reset-password/by-code',
+    data: { role, accountId, code, newPassword, confirmPassword },
     auth: false,
   })
 }
@@ -172,5 +191,5 @@ const featureApi = {
   async activityCadreUpload(file) { return await uploadFile('/api/activity/cadre/upload', file, 'file') },
 }
 
-export default { getBaseUrl, j, auth: { loginWithAccount, resetPassword, getSession, logout, setSession }, featureApi }
+export default { getBaseUrl, j, auth: { loginWithAccount, resetPassword, sendResetPasswordCode, resetPasswordByCode, getSession, logout, setSession }, featureApi }
 export { getSession, logout }

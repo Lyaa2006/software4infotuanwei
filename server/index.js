@@ -4,6 +4,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const { Pool, types } = require("pg");
+const { sendPasswordResetCode } = require("./mail");
 
 
 const PORT = Number(process.env.PORT || 3001);
@@ -16,6 +17,11 @@ const DB_PORT = Number(process.env.DB_PORT || 54321);
 const DB_USER = String(process.env.DB_USER || "system");
 const DB_PASSWORD = String(process.env.DB_PASSWORD || "123456");
 const DB_NAME = String(process.env.DB_NAME || "student_service_platform");
+
+const PASSWORD_RESET_CODE_EXPIRES_MINUTES = Number(process.env.PASSWORD_RESET_CODE_EXPIRES_MINUTES || 5);
+const PASSWORD_RESET_SEND_INTERVAL_SECONDS = Number(process.env.PASSWORD_RESET_SEND_INTERVAL_SECONDS || 60);
+const PASSWORD_RESET_DAILY_LIMIT = Number(process.env.PASSWORD_RESET_DAILY_LIMIT || 10);
+const PASSWORD_RESET_MAX_FAILS = Number(process.env.PASSWORD_RESET_MAX_FAILS || 5);
 
 const PG_DATE_OID = 1082;
 types.setTypeParser(PG_DATE_OID, (value) => String(value ?? ""));
@@ -76,6 +82,28 @@ async function ensureSchema(pool) {
   await ensurePartyStudentsSchema(pool);
   await ensureActivitySchema(pool);
   await ensureAcademicSchema(pool);
+  await ensurePasswordResetCodesSchema(pool);
+}
+
+async function ensurePasswordResetCodesSchema(pool) {
+  await pool.query(`CREATE TABLE IF NOT EXISTS password_reset_codes (
+    id BIGSERIAL PRIMARY KEY,
+    role VARCHAR(32) NOT NULL,
+    account_id VARCHAR(64) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    code_hash VARCHAR(128) NOT NULL,
+    expires_at BIGINT NOT NULL,
+    used BOOLEAN NOT NULL DEFAULT FALSE,
+    fail_count INTEGER NOT NULL DEFAULT 0,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    last_sent_at BIGINT NOT NULL
+  )`);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_password_reset_codes_account
+    ON password_reset_codes(role, account_id, created_at DESC)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_password_reset_codes_email
+    ON password_reset_codes(email, created_at DESC)`);
 }
 
 async function ensurePartyStudentsSchema(pool) {
@@ -1836,6 +1864,52 @@ function hashPassword(password, salt) {
   return derived.toString("hex");
 }
 
+function generateResetCode() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+}
+
+function hashResetCode({ role, accountId, code }) {
+  return crypto
+    .createHmac("sha256", TOKEN_SECRET)
+    .update(`${role}:${accountId}:${String(code || "").trim()}`)
+    .digest("hex");
+}
+
+function studentEmailFromAccountId(accountId) {
+  return `${normalizeAccountId(accountId)}@ruc.edu.cn`;
+}
+
+async function assertStudentPermitted(pool, role, accountId) {
+  if (role !== "student") {
+    const err = new Error("当前仅支持学生重置密码");
+    err.code = "NOT_STUDENT";
+    err.status = 403;
+    throw err;
+  }
+  if (!accountId) {
+    const err = new Error("请输入学号");
+    err.code = "EMPTY_ACCOUNT";
+    err.status = 400;
+    throw err;
+  }
+  const perm = await pool.query(
+    "SELECT id FROM permitted_accounts WHERE role=$1 AND account_id=$2 AND enabled=TRUE LIMIT 1",
+    [role, accountId],
+  );
+  if (!perm.rows.length) {
+    const err = new Error("该学号不在权限清单中");
+    err.code = "NOT_PERMITTED";
+    err.status = 403;
+    throw err;
+  }
+}
+
+function handlePasswordResetError(res, err) {
+  const code = String(err?.code || "SERVER_ERROR");
+  const status = Number(err?.status || (code === "SERVER_ERROR" ? 500 : 400));
+  fail(res, code, err?.message || "服务器异常", status);
+}
+
 function tokenizeKeywords(text) {
   const raw = String(text ?? "").toLowerCase();
   const tokens = [];
@@ -2043,6 +2117,144 @@ async function main() {
       ok(res, { token, isNew, loginAt: now, user: { role, accountId } });
     } catch (e) {
       fail(res, "SERVER_ERROR", "服务器异常", 500);
+    }
+  });
+
+  app.post("/api/auth/reset-password/send-code", async (req, res) => {
+    const role = normalizeRole(req.body?.role);
+    const accountId = normalizeAccountId(req.body?.accountId);
+    try {
+      await assertStudentPermitted(pool, role, accountId);
+
+      const now = Date.now();
+      const intervalMs = Math.max(0, PASSWORD_RESET_SEND_INTERVAL_SECONDS) * 1000;
+      const expiresMinutes = Math.max(1, PASSWORD_RESET_CODE_EXPIRES_MINUTES);
+      const email = studentEmailFromAccountId(accountId);
+
+      const latest = await pool.query(
+        "SELECT last_sent_at FROM password_reset_codes WHERE role=$1 AND account_id=$2 ORDER BY created_at DESC LIMIT 1",
+        [role, accountId],
+      );
+      const lastSentAt = Number(latest.rows?.[0]?.last_sent_at || 0);
+      if (lastSentAt && now - lastSentAt < intervalMs) {
+        const waitSeconds = Math.ceil((intervalMs - (now - lastSentAt)) / 1000);
+        return failExtra(res, "TOO_FREQUENT", `验证码发送过于频繁，请 ${waitSeconds} 秒后再试`, 429, { waitSeconds });
+      }
+
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      const daily = await pool.query(
+        "SELECT COUNT(*)::int AS count FROM password_reset_codes WHERE role=$1 AND account_id=$2 AND created_at >= $3",
+        [role, accountId, dayStart.getTime()],
+      );
+      if (Number(daily.rows?.[0]?.count || 0) >= PASSWORD_RESET_DAILY_LIMIT) {
+        return fail(res, "DAILY_LIMIT", "今日验证码发送次数已达上限，请明天再试", 429);
+      }
+
+      await pool.query(
+        "UPDATE password_reset_codes SET used=TRUE, updated_at=$1 WHERE role=$2 AND account_id=$3 AND used=FALSE",
+        [now, role, accountId],
+      );
+
+      const code = generateResetCode();
+      const codeHash = hashResetCode({ role, accountId, code });
+      const expiresAt = now + expiresMinutes * 60 * 1000;
+
+      const inserted = await pool.query(
+        `INSERT INTO password_reset_codes
+          (role, account_id, email, code_hash, expires_at, used, fail_count, created_at, updated_at, last_sent_at)
+         VALUES ($1,$2,$3,$4,$5,FALSE,0,$6,$6,$6)
+         RETURNING id`,
+        [role, accountId, email, codeHash, expiresAt, now],
+      );
+
+      try {
+        await sendPasswordResetCode({ to: email, accountId, code, expiresMinutes });
+      } catch (mailErr) {
+        await pool.query("UPDATE password_reset_codes SET used=TRUE, updated_at=$1 WHERE id=$2", [Date.now(), inserted.rows[0].id]);
+        return fail(res, "MAIL_SEND_FAILED", "验证码邮件发送失败，请稍后再试", 500);
+      }
+
+      ok(res, {
+        email,
+        expiresMinutes,
+        resendAfterSeconds: PASSWORD_RESET_SEND_INTERVAL_SECONDS,
+      });
+    } catch (err) {
+      handlePasswordResetError(res, err);
+    }
+  });
+
+  app.post("/api/auth/reset-password/by-code", async (req, res) => {
+    const role = normalizeRole(req.body?.role);
+    const accountId = normalizeAccountId(req.body?.accountId);
+    const code = String(req.body?.code ?? "").trim();
+    const newPassword = String(req.body?.newPassword ?? "");
+    const confirmPassword = String(req.body?.confirmPassword ?? "");
+    try {
+      await assertStudentPermitted(pool, role, accountId);
+      if (!/^\d{6}$/.test(code)) return fail(res, "INVALID_CODE", "请输入6位数字验证码");
+      if (!newPassword) return fail(res, "EMPTY_PASSWORD", "请输入新密码");
+      if (newPassword.length < 6) return fail(res, "WEAK_PASSWORD", "新密码长度不能少于6位");
+      if (newPassword !== confirmPassword) return fail(res, "PASSWORD_MISMATCH", "两次输入的新密码不一致");
+
+      const now = Date.now();
+      const latest = await pool.query(
+        `SELECT id, code_hash, expires_at, fail_count
+         FROM password_reset_codes
+         WHERE role=$1 AND account_id=$2 AND used=FALSE
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [role, accountId],
+      );
+      const record = latest.rows?.[0];
+      if (!record) return fail(res, "CODE_NOT_FOUND", "请先获取验证码");
+
+      if (Number(record.expires_at || 0) < now) {
+        await pool.query("UPDATE password_reset_codes SET used=TRUE, updated_at=$1 WHERE id=$2", [now, record.id]);
+        return fail(res, "CODE_EXPIRED", "验证码已过期，请重新获取");
+      }
+
+      if (Number(record.fail_count || 0) >= PASSWORD_RESET_MAX_FAILS) {
+        await pool.query("UPDATE password_reset_codes SET used=TRUE, updated_at=$1 WHERE id=$2", [now, record.id]);
+        return fail(res, "CODE_LOCKED", "验证码错误次数过多，请重新获取");
+      }
+
+      const expectedHash = hashResetCode({ role, accountId, code });
+      if (String(record.code_hash || "") !== expectedHash) {
+        const nextFailCount = Number(record.fail_count || 0) + 1;
+        const shouldDisable = nextFailCount >= PASSWORD_RESET_MAX_FAILS;
+        await pool.query(
+          "UPDATE password_reset_codes SET fail_count=$1, used=$2, updated_at=$3 WHERE id=$4",
+          [nextFailCount, shouldDisable, now, record.id],
+        );
+        return fail(res, "INVALID_CODE", shouldDisable ? "验证码错误次数过多，请重新获取" : "验证码错误");
+      }
+
+      const salt = crypto.randomBytes(16).toString("hex");
+      const passwordHash = hashPassword(newPassword, salt);
+      const userQuery = await pool.query(
+        "SELECT id FROM users WHERE role=$1 AND account_id=$2 LIMIT 1",
+        [role, accountId],
+      );
+      let isNew = false;
+      if (!userQuery.rows.length) {
+        await pool.query(
+          "INSERT INTO users (role, account_id, password_hash, salt, created_at, last_login_at) VALUES ($1,$2,$3,$4,$5,$5)",
+          [role, accountId, passwordHash, salt, now],
+        );
+        isNew = true;
+      } else {
+        await pool.query(
+          "UPDATE users SET password_hash=$1, salt=$2, last_login_at=$3 WHERE id=$4",
+          [passwordHash, salt, now, userQuery.rows[0].id],
+        );
+      }
+
+      await pool.query("UPDATE password_reset_codes SET used=TRUE, updated_at=$1 WHERE id=$2", [now, record.id]);
+      ok(res, { ok: true, accountId, isNew });
+    } catch (err) {
+      handlePasswordResetError(res, err);
     }
   });
 
