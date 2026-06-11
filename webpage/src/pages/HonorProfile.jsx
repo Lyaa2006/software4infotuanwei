@@ -4,7 +4,6 @@ import api from '../services/api'
 
 const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp'
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024
-const HONOR_DATE_MIN = '2024-09-01'
 
 function isValidYmd(value) {
   const s = String(value ?? '').trim()
@@ -142,7 +141,7 @@ export default function HonorProfile() {
     const title = String(formTitle || '').trim()
     if (!title) return alert('请填写荣誉名称')
     if (formHonorDate && !isValidYmd(formHonorDate)) return alert('日期格式错误或日期无效，应为真实的 YYYY-MM-DD')
-    if (formHonorDate && (formHonorDate < HONOR_DATE_MIN || formHonorDate > localTodayYmd())) return alert('时间错误')
+    if (formHonorDate && formHonorDate > localTodayYmd()) return alert('荣誉日期不能设置为未来日期')
     setSaving(true)
     try {
       if (editingId) {
