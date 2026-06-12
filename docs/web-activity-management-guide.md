@@ -95,3 +95,51 @@
 5. 已通过活动不显示删除按钮或被后端拒绝删除。
 6. 手填管理员账号作为参与人应被后端拒绝。
 7. 管理员骨干设置列表不显示管理员账号。
+
+## Current Web Behavior Notes
+
+This section records the current activity management behavior after the recent Web updates.
+
+### Activity page scope
+
+- Activity management is available from the Web activity page, currently reached through the Dashboard activity entry.
+- Existing create and edit flows should continue to use the current backend APIs.
+- The set/remove cadre function must remain available. It is not replaced by Student Tag Management.
+
+### Cadre setting and student tags
+
+- Cadre setting is an activity-management operation.
+- Student Tag Management is the general place for maintaining student tags.
+- Both areas may depend on student account scope, but they serve different workflows.
+- Admin accounts must not appear as student/cadre candidates.
+
+### Activity deletion
+
+The Web page now provides a deletion entry for editable activity records.
+
+Expected behavior:
+
+- A delete action should only appear for records that the current user can edit/delete according to existing rules.
+- The page should ask for confirmation before deletion.
+- Cancelling the confirmation should keep the list unchanged.
+- Confirming deletion should refresh the list immediately.
+- Refreshing the page should keep the deleted record removed.
+
+Deletion should be rejected or unavailable when:
+
+- The activity has already been approved.
+- The current user is not the creator or does not satisfy the current backend permission rule.
+- The current user is not allowed to manage that activity record.
+
+### Participant account scope
+
+- Organizers, helpers, and participants should be real student accounts when the field represents student participants.
+- Admin accounts should not be accepted as student activity participants.
+- Frontend filtering helps the UI, but backend validation must still reject invalid participant accounts.
+
+### Troubleshooting
+
+- If the delete button is missing, check whether the record is editable by the current user.
+- If deletion fails, check whether the record is approved, owned by another user, or blocked by permission rules.
+- If a non-student account can be saved as a participant or cadre, treat it as a student-scope protection bug.
+- If set/remove cadre disappears, treat it as a regression because the feature should remain available.
