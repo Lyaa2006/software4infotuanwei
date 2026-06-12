@@ -1,194 +1,107 @@
-# 信息学院学生综合服务与党团管理平台
+# Information College Student Service and Party-Youth Management Platform
 
-本仓库用于团队协作开发“信息学院学生综合服务与党团管理平台”。当前处于项目初始化阶段，已建立基础文档、环境模板和初步目录结构，便于后续统一 Git 管理、环境配置和模块开发。
+This repository is used by the software engineering course team to build the Information College Student Service and Party-Youth Management Platform. The project now contains a Web client, a WeChat mini program, a backend service, database materials, deployment materials, and project documents.
 
-## 当前状态
+## Current Status
 
-- 已有需求文档
-- 已建立 Git 协作规范
-- 已建立 `.gitignore`
-# 信息学院学生综合服务与党团管理平台
+- webpage/: Web client for login, dashboard, student services, and admin pages.
+- miniprogram/: WeChat mini program client for mobile scenarios.
+- server/: Backend service for authentication, business APIs, permission checks, and data-scope protection.
+- database/: Database initialization and schema-related materials.
+- deploy/: Deployment notes and server environment materials.
+- docs/: Collaboration notes, feature guides, API notes, test checklists, and deployment documents.
 
-本仓库用于团队协作开发“信息学院学生综合服务与党团管理平台”。当前处于项目初始化阶段，已建立基础文档、环境模板和初步目录结构，便于后续统一 Git 管理、环境配置和模块开发。
+The backend implementation is the source of truth for API behavior. If documentation and code differ, verify the current server implementation and update the related document.
 
-## 当前状态
+## Main Feature Modules
 
-- 已有需求文档
-- 已建立 Git 协作规范
-- 已建立 `.gitignore`
-- 已建立 `.env.example`
-- 已建立初步目录结构
-- 已补接口讨论模板与 RBAC 讨论模板
-- 前后端代码尚未正式开始
+| Module | Description |
+| --- | --- |
+| Login and permissions | Web login, role recognition, and student/admin access boundary. |
+| Dashboard | Grouped feature entry points for common student and admin services. |
+| Intelligent Q&A | Entry for policy, process, and frequently asked question support. |
+| Party process | Student progress display and admin maintenance of party stages, dates, tags, and reminder nodes. |
+| Certificate service | Certificate templates, materials, downloads, and generation flow. |
+| Academic analysis | Academic plans, course information, and analysis pages. |
+| Honor display | Honor records, photo upload, and display. |
+| Notices and reminders | Admin notice sending, including tag-based delivery. |
+| Student tag management | Independent page for maintaining student tags; Reminder only sends by tag. |
+| Class activity management | Activity creation, editing, cadre setting, and deletion. |
+| Admin student list | Party admin student list with account, name, stage, tags, and edit entry. |
 
-## 当前目录结构
+## Recent Web Fixes and Improvements
 
-```text
-.
-├── README.md
-├── .gitignore
-├── .env.example
-├── docs/
-│   ├── git-flow-collaboration.md
-	├── project-structure.md
-	├── rbac-matrix.md
-	└── api/
-├── frontend/
-├── backend/
-├── database/
-│   └── migrations/
-├── scripts/
-├── deploy/
-├── tests/
-├── 需求文档.pdf
-└── tmp.md
-```
+- Login page and dashboard visual polish.
+- Dashboard feature entry copy and grouping polish.
+- Return-home buttons added to multiple subpages.
+- Student tag management separated from the Reminder page.
+- Reminder keeps notice sending and tag-based sending, but no longer edits tags.
+- Activity keeps set/remove cadre and adds activity deletion.
+- Party process date validation now blocks invalid dates, invalid stage order, future historical dates, and display/save date offset issues.
+- Backend student-scope protection prevents admin accounts from being treated as student targets in tag, party progress, activity participant, and cadre operations.
+- /party/admin/list has been polished as a formal admin-style student list.
+- The empty /party/student student-side issue was compared against main and should be tracked as a separate follow-up item.
 
-## 已创建文件说明
+## Local Development
 
-### `需求文档.pdf`
+### Web client
 
-- 内容：项目的软件需求规格说明书
-- 功能：作为后续设计、开发、测试和验收的统一依据
-- 使用时机：进行模块拆分、权限设计、接口设计、数据库设计时首先参考
-- 待补充内容：若需求有变更，应持续更新并保留版本记录
+Run these commands from the repository root:
 
-### `.gitignore`
+    cd webpage
+    npm install
+    npm run dev
+    npm run build
 
-- 内容：Git 忽略规则
-- 功能：避免将本地环境文件、依赖目录、缓存、日志、IDE 配置、敏感信息等提交到仓库
-- 使用时机：新建本地配置、安装依赖、生成构建产物之前就应存在
-- 待补充内容：后续根据确定的技术栈补充更具体的忽略项
+Use npm run dev for local development. Run npm run build before submitting Web changes when possible. Do not commit node_modules/ or dist/.
 
-### `.env.example`
+### Backend service
 
-- 内容：项目环境变量模板
-- 功能：统一团队配置格式，说明项目运行所需的关键变量
-- 使用时机：本地开发环境初始化时，复制为 `.env` 后填写真实值
-- 待补充内容：数据库真实连接信息、JWT 密钥策略、邮件或短信服务配置
+Backend code is under server/. Local runtime configuration should be stored in a local .env file. Do not commit real secrets or environment-specific values.
 
-### `docs/git-flow-collaboration.md`
+### Mini program
 
-- 内容：Git Flow 分支模型、Commit 规范、PR 规范、Review 要点和流程示例
-- 功能：统一团队协作方式，减少分支混乱、提交无规范和 PR 信息不全的问题
-- 使用时机：开始多人并行开发前；新功能开发、Bug 修复、提交 PR 时都要参考
-- 待补充内容：可根据团队实践补充更细的分工命名规则或发布流程
+Mini program code is under miniprogram/. Web-only tasks should not modify mini program files unless a task explicitly says so.
 
-### `docs/project-structure.md`
+## Document Entry Points
 
-- 内容：当前项目的初始目录结构和待填环境变量说明
-- 功能：帮助团队快速理解仓库布局，避免不同成员随意建目录
-- 使用时机：开始创建前后端代码、数据库脚本和部署配置时参考
-- 待补充内容：后续可补充每个目录下更细的子结构约定
+| Document | Purpose |
+| --- | --- |
+| docs/web-feature-overview.md | Web feature map, page paths, role scope, and known limitations. |
+| docs/web-test-checklist.md | Manual regression and acceptance checklist for Web testing. |
+| docs/web-tag-management-guide.md | Student tag management and Reminder tag sending guide. |
+| docs/web-activity-management-guide.md | Class activity, cadre setting, and deletion guide. |
+| docs/api/api-spec.md | API notes and known frontend call scenarios. |
+| docs/git-flow-collaboration.md | Branch, commit, PR, and collaboration rules. |
+| docs/project-structure.md | Repository structure notes. |
+| docs/rbac-matrix.md | Role and permission discussion matrix. |
 
-### `docs/api/api-spec.md`
+## Collaboration Notes
 
-- 内容：接口讨论提纲、第一批接口清单和后续接口填写模板
-- 功能：在正式商量前先列清要讨论的接口问题，商量后统一沉淀接口契约
-- 使用时机：成员 A、B 开始整理接口草案前；成员 C、D 开始接接口前
-- 待补充内容：每个接口的 owner、issue、参数、响应、错误码、联调备注
+1. Keep main stable. Use feature branches for feature work, bug fixes, UI polish, and documentation updates.
+2. Do not commit .env, local logs, dependency directories, or build outputs.
+3. For Web changes, run npm run build from webpage/ before submitting when possible.
+4. For backend changes, run node --check server/index.js when server/index.js is touched.
+5. Important feature or behavior changes should update docs/ so teammates, testers, and course reviewers can verify the current behavior.
+6. If documentation and implementation disagree, record the current state or a TODO in documentation instead of changing code in a documentation-only branch.
 
-### `docs/rbac-matrix.md`
+## Pre-submit Checks
 
-- 内容：RBAC 讨论提纲、角色清单、资源操作矩阵和接口权限映射模板
-- 功能：在正式商量前先列清要讨论的权限问题，商量后统一沉淀角色与权限边界
-- 使用时机：成员 A 整理角色和权限模型前；成员 B 补业务资源前；成员 C、D 做权限相关页面前
-- 待补内容：最终角色集合、数据范围、权限点、接口权限要求和 owner
+For code changes:
 
-## 已创建目录说明
+    git status -sb
+    git diff --check
+    cd webpage && npm run build
 
-### `frontend/`
+For documentation-only changes:
 
-- 内容：前端代码目录
-- 功能：存放移动端 / PC 端前端项目代码
-- 使用时机：确定前端框架后开始初始化项目
-- 待补充内容：前端框架、组件结构、路由、页面和状态管理方案
+    git status -sb
+    git diff --stat
+    git diff --name-only
+    git diff --check
 
-### `backend/`
+## Notes
 
-- 内容：后端代码目录
-- 功能：存放接口、业务逻辑、权限控制、文件处理、日志审计等后端代码
-- 使用时机：确定后端技术栈后开始初始化服务
-- 待补充内容：项目框架、模块划分、鉴权方案、日志与异常处理规范
-
-### `database/`
-
-- 内容：数据库相关文件目录
-- 功能：集中存放表结构设计、初始化脚本、迁移脚本等内容
-- 使用时机：开始数据库设计或引入迁移机制时使用
-- 待补充内容：表结构文档、初始化脚本、Kingbase 适配说明
-
-### `database/migrations/`
-
-- 内容：数据库迁移脚本目录
-- 功能：统一管理数据库结构变更
-- 使用时机：任何涉及表结构、字段、索引、约束变更时使用
-- 待补充内容：迁移工具选型与脚本命名规范
-
-### `docs/api/`
-
-- 内容：接口文档目录
-- 功能：统一维护前后端接口定义
-- 使用时机：当前阶段先整理“要商量哪些接口”，正式讨论后再逐步补充接口细节
-- 待补充内容：接口路径、请求参数、返回格式、错误码、权限要求、owner、issue
-
-### `scripts/`
-
-- 内容：脚本目录
-- 功能：存放初始化、导入、清理、辅助开发等脚本
-- 使用时机：需要统一执行某些重复操作时使用
-- 待补充内容：数据库初始化脚本、测试数据脚本、启动辅助脚本
-
-### `deploy/`
-
-- 内容：部署相关目录
-- 功能：存放 Docker、部署配置和运行环境说明
-- 使用时机：开始统一开发环境、测试环境或演示环境时使用
-- 待补充内容：`docker-compose.yml`、镜像构建配置、部署说明
-
-### `tests/`
-
-- 内容：测试目录
-- 功能：存放单元测试、接口测试、集成测试等代码
-- 使用时机：模块开发完成后补充测试时使用
-- 待补充内容：测试框架选型、测试目录分层、关键模块测试用例
-
-## 当前建议使用顺序
-
-1. 先阅读 `需求文档.pdf`
-2. 再阅读 `docs/git-flow-collaboration.md`
-3. 本地开发前参考 `.env.example`
-4. 开始建代码前参考 `docs/project-structure.md`
-5. 开始商量接口和权限前，先阅读 `docs/api/api-spec.md` 和 `docs/rbac-matrix.md`
-6. 前后端启动后，再逐步补齐 `docs/api/`、`database/`、`deploy/`、`tests/`
-
-## 当前待补充的关键内容
-
-- 技术栈最终选型
-- 前端项目初始化
-- 后端项目初始化
-- Kingbase 连接与迁移方案
-- API 文档细化
-- RBAC 权限矩阵细化
-- Docker 环境文件
-- 数据库表结构文档
-
-## 说明
-
-- 本地真实配置请写入 `.env`，不要提交到 Git
-- `main` 只保留稳定版本，日常开发统一走 `develop` 和 `feature/*`
-- 当前仓库仍在初始化阶段，后续应随着项目推进持续补全文档和工程配置
-
----
-
-# 云开发 quickstart
-
-这是云开发的快速启动指引，其中演示了如何上手使用云开发的三大基础能力：
-
-- 数据库：一个既可在小程序前端操作，也能在云函数中读写的 JSON 文档型数据库
-- 文件存储：在小程序前端直接上传/下载云端文件，在云开发控制台可视化管理
-- 云函数：在云端运行的代码，微信私有协议天然鉴权，开发者只需编写业务逻辑代码
-
-## 参考文档
-
-- [云开发文档](https://developers.weixin.qq.com/miniprogram/dev/wxcloud/basis/getting-started.html)
+- Admin accounts are managers. They should not appear as student management targets in student tags, party student lists, activity participants, or cadre setting lists.
+- Activity deletion, party date validation, student tag management, and student-scope protection are important regression areas.
+- Database structure, deployment configuration, and mini program behavior should only be changed in clearly scoped branches.
