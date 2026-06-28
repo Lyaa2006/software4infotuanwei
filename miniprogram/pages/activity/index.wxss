@@ -49,6 +49,17 @@ page {
   width: 100%;
 }
 
+.picker {
+  min-height: 88rpx;
+  background: #f6f6f6;
+  border-radius: 12rpx;
+  padding: 24rpx 20rpx;
+  font-size: 30rpx;
+  box-sizing: border-box;
+  width: 100%;
+  color: rgba(0, 0, 0, 0.9);
+}
+
 .textarea {
   background: #f6f6f6;
   border-radius: 12rpx;
@@ -65,6 +76,12 @@ page {
   margin-top: 12rpx;
 }
 
+.field_actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12rpx;
+}
+
 .primary {
   margin: 0;
 }
@@ -72,6 +89,11 @@ page {
 .ghost {
   margin: 0;
   background: rgba(0, 0, 0, 0.06);
+}
+
+.small_btn {
+  min-width: 0;
+  padding: 0 20rpx;
 }
 
 .danger {

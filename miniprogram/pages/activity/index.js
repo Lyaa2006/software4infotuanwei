@@ -2,6 +2,14 @@ function pad2(n) {
   return String(n).padStart(2, "0");
 }
 
+function localTodayYmd() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth() + 1);
+  const day = pad2(d.getDate());
+  return `${y}-${m}-${day}`;
+}
+
 function formatYmd(ymd) {
   const s = String(ymd ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
@@ -93,6 +101,7 @@ Page({
     uploading: false,
     editingId: "",
     editingRejectReason: "",
+    today: localTodayYmd(),
     formTitle: "",
     formDate: "",
     formSummary: "",
@@ -111,7 +120,11 @@ Page({
       wx.reLaunch({ url: "/pages/index/index" });
       return;
     }
-    this.setData({ isAdmin: session.role === "admin", isStudent: session.role === "student" });
+    this.setData({
+      isAdmin: session.role === "admin",
+      isStudent: session.role === "student",
+      today: localTodayYmd(),
+    });
     this.reloadAll();
   },
 
@@ -212,8 +225,12 @@ Page({
     this.setData({ formTitle: e.detail.value });
   },
 
-  onFormDateInput(e) {
+  onFormDateChange(e) {
     this.setData({ formDate: e.detail.value });
+  },
+
+  onClearFormDate() {
+    this.setData({ formDate: "" });
   },
 
   onFormSummaryInput(e) {

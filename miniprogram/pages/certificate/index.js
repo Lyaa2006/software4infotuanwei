@@ -69,7 +69,7 @@ function fieldPlaceholder(key) {
   const map = {
     name: "请输入姓名",
     accountId: "请输入学号",
-    date: "例如：2026-06-08",
+    date: "请选择日期",
   };
   return map[k] || `请输入${fieldLabel(k)}`;
 }
@@ -77,6 +77,20 @@ function fieldPlaceholder(key) {
 function isMultilineField(key) {
   const k = String(key ?? "").trim().toLowerCase();
   return k.includes("reason") || k.includes("proof") || k.includes("remark") || k.includes("note");
+}
+
+function isDateField(key) {
+  const k = String(key ?? "").trim();
+  if (!k) return false;
+  return /(^|[_-])(date|day|deadline|due)([_-]|$)/i.test(k) || /(date|day|deadline|due)$/i.test(k);
+}
+
+function localTodayYmd() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 Page({
@@ -88,6 +102,7 @@ Page({
     selectedTemplateId: "",
     selectedTemplateTitle: "",
     selectedTemplateMeta: "",
+    today: localTodayYmd(),
     manualFields: [],
     uploadTitle: "",
     uploadCategory: "",
@@ -104,7 +119,7 @@ Page({
       wx.reLaunch({ url: "/pages/index/index" });
       return;
     }
-    this.setData({ isAdmin: session.role === "admin" });
+    this.setData({ isAdmin: session.role === "admin", today: localTodayYmd() });
     this.loadTemplates();
   },
 
@@ -167,6 +182,7 @@ Page({
         key: String(k),
         label: fieldLabel(k),
         placeholder: fieldPlaceholder(k),
+        isDate: isDateField(k),
         multiline: isMultilineField(k),
         value: "",
       }));
@@ -183,6 +199,19 @@ Page({
     const key = String(e.currentTarget?.dataset?.key || "");
     const v = String(e.detail?.value ?? "");
     const next = (this.data.manualFields || []).map((f) => (f.key === key ? { ...f, value: v } : f));
+    this.setData({ manualFields: next });
+  },
+
+  onManualFieldDateChange(e) {
+    const key = String(e.currentTarget?.dataset?.key || "");
+    const v = String(e.detail?.value ?? "");
+    const next = (this.data.manualFields || []).map((f) => (f.key === key ? { ...f, value: v } : f));
+    this.setData({ manualFields: next });
+  },
+
+  onClearManualFieldDate(e) {
+    const key = String(e.currentTarget?.dataset?.key || "");
+    const next = (this.data.manualFields || []).map((f) => (f.key === key ? { ...f, value: "" } : f));
     this.setData({ manualFields: next });
   },
 

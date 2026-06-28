@@ -7,8 +7,13 @@
       <input class="input" value="{{formTitle}}" placeholder="例如：团日活动/主题班会" bindinput="onFormTitleInput" maxlength="60" />
     </view>
     <view class="form_row">
-      <view class="label">日期（YYYY-MM-DD，可选）</view>
-      <input class="input" value="{{formDate}}" placeholder="例如：2026-05-01" bindinput="onFormDateInput" maxlength="10" />
+      <view class="label">日期（可选）</view>
+      <picker mode="date" value="{{formDate || today}}" bindchange="onFormDateChange">
+        <view class="picker">{{formDate || '请选择日期'}}</view>
+      </picker>
+      <view class="field_actions">
+        <button size="mini" class="ghost small_btn" disabled="{{!formDate}}" bindtap="onClearFormDate">清空日期</button>
+      </view>
     </view>
     <view class="form_row">
       <view class="label">活动回顾（可选）</view>
