@@ -524,3 +524,27 @@
 - 冻结统一错误码、分页参数、时间字段格式
 - 补齐管理端审批、通知、导入导出相关接口
 - 与后续数据库设计文档、RBAC 矩阵文档互相引用
+
+## Current Web API Documentation Notes
+
+The API details in this directory should be synchronized with the current backend implementation. When there is any uncertainty, use server/ as the source of truth and update this document after confirming the actual request and response shape.
+
+### Current known Web call areas
+
+| Area | Typical frontend scenario | Documentation note |
+| --- | --- | --- |
+| Authentication | Web login and role-based access | Keep role and account-state behavior aligned with backend auth checks. |
+| Party admin student list | /party/admin/list loads real student accounts | Student lists should not be derived from party_students alone. |
+| Party admin edit | Admin edits one student's party progress | Target account must be a real student account. |
+| Student tag management | /tag-management maintains student tags | Saving tags for admin or non-student accounts should be rejected. |
+| Reminder | /reminder sends notices to all or by tags | Tag sending should use real student tag data. |
+| Activity management | /activity creates, edits, deletes, and manages cadres | Participant and cadre targets should be real student accounts where the field represents students. |
+| Certificates, academics, honors | Dashboard feature modules | Keep request parameters and file handling notes updated when implementation changes. |
+
+### Student-scope API rule
+
+For student-only operations, backend APIs should validate the target account. This includes student tag editing, party progress editing, activity participants, and cadre settings. Frontend filtering is helpful for display but should not be treated as security or data-scope protection.
+
+### Update rule
+
+When an endpoint path, request body, response field, permission rule, or error code changes, update this document or add a link to a more specific API note. If the exact contract is still under discussion, mark it as pending instead of guessing.
