@@ -59,6 +59,37 @@ async function sendPasswordResetCode({ to, accountId, code, expiresMinutes }) {
   });
 }
 
+async function sendReminderEmail({ to, title, content }) {
+  if (!isMailEnabled()) {
+    throw new Error("邮件发送功能已关闭");
+  }
+  const transporter = createTransporter();
+  const from = env("SMTP_FROM", env("SMTP_USER"));
+  const safeTitle = String(title || "").trim();
+  const safeContent = String(content || "").trim();
+  const subject = `第3组学生服务平台通知：${safeTitle}`;
+  const text = [
+    "您好：",
+    "",
+    "您收到一条来自软件工程导论第3组学生服务平台的通知。",
+    "",
+    `通知标题：${safeTitle}`,
+    "",
+    "通知内容：",
+    safeContent,
+    "",
+    "如对通知内容有疑问，请联系学院相关负责老师或系统管理员。",
+  ].join("\n");
+
+  await transporter.sendMail({
+    from,
+    to,
+    subject,
+    text,
+  });
+}
+
 module.exports = {
   sendPasswordResetCode,
+  sendReminderEmail,
 };

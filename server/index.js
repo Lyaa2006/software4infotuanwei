@@ -4,7 +4,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const { Pool, types } = require("pg");
-const { sendPasswordResetCode } = require("./mail");
+const { sendPasswordResetCode, sendReminderEmail } = require("./mail");
 
 
 const PORT = Number(process.env.PORT || 3001);
@@ -22,6 +22,8 @@ const PASSWORD_RESET_CODE_EXPIRES_MINUTES = Number(process.env.PASSWORD_RESET_CO
 const PASSWORD_RESET_SEND_INTERVAL_SECONDS = Number(process.env.PASSWORD_RESET_SEND_INTERVAL_SECONDS || 60);
 const PASSWORD_RESET_DAILY_LIMIT = Number(process.env.PASSWORD_RESET_DAILY_LIMIT || 10);
 const PASSWORD_RESET_MAX_FAILS = Number(process.env.PASSWORD_RESET_MAX_FAILS || 5);
+const REMINDER_EMAIL_INTERVAL_MS = Number(process.env.REMINDER_EMAIL_INTERVAL_MS || 5 * 60 * 1000);
+const REMINDER_EMAIL_BATCH_LIMIT = Number(process.env.REMINDER_EMAIL_BATCH_LIMIT || 2000);
 
 const PG_DATE_OID = 1082;
 types.setTypeParser(PG_DATE_OID, (value) => String(value ?? ""));
@@ -83,6 +85,7 @@ async function ensureSchema(pool) {
   await ensureActivitySchema(pool);
   await ensureAcademicSchema(pool);
   await ensurePasswordResetCodesSchema(pool);
+  await ensureReminderEmailSchema(pool);
 }
 
 async function ensurePasswordResetCodesSchema(pool) {
@@ -104,6 +107,28 @@ async function ensurePasswordResetCodesSchema(pool) {
     ON password_reset_codes(role, account_id, created_at DESC)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_password_reset_codes_email
     ON password_reset_codes(email, created_at DESC)`);
+}
+
+async function ensureReminderEmailSchema(pool) {
+  await pool.query(`CREATE TABLE IF NOT EXISTS reminder_email_logs (
+    id BIGSERIAL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    target_type VARCHAR(16) NOT NULL,
+    target_tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    target_accounts JSONB NOT NULL DEFAULT '[]'::jsonb,
+    recipient_count INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    fail_count INTEGER NOT NULL DEFAULT 0,
+    created_by VARCHAR(64) NOT NULL DEFAULT '',
+    created_at BIGINT NOT NULL,
+    finished_at BIGINT NOT NULL DEFAULT 0,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    error TEXT NOT NULL DEFAULT ''
+  )`);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_reminder_email_logs_created_at
+    ON reminder_email_logs(created_at DESC)`);
 }
 
 async function ensurePartyStudentsSchema(pool) {
@@ -1879,6 +1904,57 @@ function studentEmailFromAccountId(accountId) {
   return `${normalizeAccountId(accountId)}@ruc.edu.cn`;
 }
 
+async function fetchEnabledStudentAccounts(pool) {
+  const resp = await pool.query(
+    "SELECT account_id FROM permitted_accounts WHERE role='student' AND enabled=TRUE ORDER BY account_id ASC",
+  );
+  return (resp.rows || []).map((r) => normalizeAccountId(r.account_id)).filter(Boolean);
+}
+
+async function resolveReminderEmailRecipients(pool, { targetType, targetTags, targetAccounts }) {
+  const allAccounts = await fetchEnabledStudentAccounts(pool);
+  if (!allAccounts.length) {
+    const err = new Error("暂无可发送的学生账号");
+    err.code = "NO_STUDENTS";
+    err.status = 400;
+    throw err;
+  }
+
+  let recipients = allAccounts;
+  if (targetType === "tags") {
+    const tagResp = await pool.query("SELECT account_id, tags FROM party_students");
+    const tagMap = new Map();
+    for (const row of tagResp.rows || []) {
+      const id = normalizeAccountId(row.account_id);
+      if (!id) continue;
+      tagMap.set(id, normalizeStringArray(row.tags));
+    }
+    const wanted = new Set(targetTags);
+    recipients = allAccounts.filter((id) => {
+      const tags = tagMap.get(id) || [];
+      return tags.some((tag) => wanted.has(tag));
+    });
+  } else if (targetType === "batch") {
+    const allowed = new Set(allAccounts);
+    recipients = normalizeAccountIdList(targetAccounts).filter((id) => allowed.has(id));
+  }
+
+  recipients = Array.from(new Set(recipients));
+  if (!recipients.length) {
+    const err = new Error(targetType === "tags" ? "没有匹配该标签的学生" : "请选择至少一名学生");
+    err.code = "NO_TARGETS";
+    err.status = 400;
+    throw err;
+  }
+  if (recipients.length > REMINDER_EMAIL_BATCH_LIMIT) {
+    const err = new Error(`单次邮件发送人数不能超过 ${REMINDER_EMAIL_BATCH_LIMIT} 人`);
+    err.code = "TOO_MANY_RECIPIENTS";
+    err.status = 400;
+    throw err;
+  }
+  return recipients;
+}
+
 async function assertStudentPermitted(pool, role, accountId) {
   if (role !== "student") {
     const err = new Error("当前仅支持学生重置密码");
@@ -2871,6 +2947,81 @@ async function main() {
       fail(res, "SERVER_ERROR", "服务器异常", 500);
     } finally {
       client.release();
+    }
+  });
+
+  app.post("/api/reminder/admin/email", authRequired, adminRequired, async (req, res) => {
+    const title = String(req.body?.title ?? "").trim();
+    const content = String(req.body?.content ?? "").trim();
+    const rawTargetType = String(req.body?.targetType ?? "all");
+    const targetType = rawTargetType === "tags" || rawTargetType === "batch" ? rawTargetType : "all";
+    const targetTags = normalizeStringArray(req.body?.targetTags);
+    const targetAccounts = normalizeAccountIdList(req.body?.targetAccounts);
+
+    if (!title) return fail(res, "EMPTY_TITLE", "请填写邮件标题");
+    if (!content) return fail(res, "EMPTY_CONTENT", "请填写邮件内容");
+    if (title.length > 120) return fail(res, "TITLE_TOO_LONG", "邮件标题不能超过120字");
+    if (content.length > 5000) return fail(res, "CONTENT_TOO_LONG", "邮件内容不能超过5000字");
+    if (targetType === "tags" && !targetTags.length) return fail(res, "EMPTY_TAGS", "请选择标签");
+    if (targetType === "batch" && !targetAccounts.length) return fail(res, "EMPTY_ACCOUNTS", "请选择至少一名学生");
+
+    const now = Date.now();
+    const createdBy = normalizeAccountId(req.user?.accountId);
+    try {
+      const latest = await pool.query(
+        "SELECT created_at FROM reminder_email_logs ORDER BY created_at DESC LIMIT 1",
+      );
+      const lastCreatedAt = Number(latest.rows?.[0]?.created_at || 0);
+      if (lastCreatedAt && now - lastCreatedAt < REMINDER_EMAIL_INTERVAL_MS) {
+        const waitSeconds = Math.ceil((REMINDER_EMAIL_INTERVAL_MS - (now - lastCreatedAt)) / 1000);
+        return failExtra(res, "TOO_FREQUENT", `邮件通知发送过于频繁，请 ${waitSeconds} 秒后再试`, 429, { waitSeconds });
+      }
+
+      const recipients = await resolveReminderEmailRecipients(pool, { targetType, targetTags, targetAccounts });
+      const logResp = await pool.query(
+        `INSERT INTO reminder_email_logs
+          (title, content, target_type, target_tags, target_accounts, recipient_count, created_by, created_at, status)
+         VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6,$7,$8,'sending')
+         RETURNING id`,
+        [
+          title,
+          content,
+          targetType,
+          JSON.stringify(targetType === "tags" ? targetTags : []),
+          JSON.stringify(targetType === "batch" ? recipients : []),
+          recipients.length,
+          createdBy,
+          now,
+        ],
+      );
+      const logId = Number(logResp.rows?.[0]?.id || 0);
+
+      let successCount = 0;
+      let failCount = 0;
+      const failures = [];
+      for (const accountId of recipients) {
+        const email = studentEmailFromAccountId(accountId);
+        try {
+          await sendReminderEmail({ to: email, title, content });
+          successCount += 1;
+        } catch (mailErr) {
+          failCount += 1;
+          if (failures.length < 5) failures.push(`${accountId}:${String(mailErr?.code || mailErr?.message || "SEND_FAILED")}`);
+        }
+      }
+
+      const status = failCount ? (successCount ? "partial" : "failed") : "sent";
+      const error = failures.join("; ");
+      await pool.query(
+        "UPDATE reminder_email_logs SET success_count=$2, fail_count=$3, finished_at=$4, status=$5, error=$6 WHERE id=$1",
+        [logId, successCount, failCount, Date.now(), status, error],
+      );
+
+      if (!successCount) return fail(res, "MAIL_SEND_FAILED", "邮件发送失败，请检查 SMTP 配置或稍后再试", 500);
+      ok(res, { ok: true, id: logId, targetCount: recipients.length, successCount, failCount });
+    } catch (e) {
+      if (String(e?.code || "") && e.status) return fail(res, e.code, e.message, e.status);
+      fail(res, "SERVER_ERROR", "服务器异常", 500);
     }
   });
 
