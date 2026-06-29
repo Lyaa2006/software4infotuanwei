@@ -650,6 +650,7 @@ textarea:focus {
   border-radius: 14px;
   background: var(--card-soft);
   padding: 18px;
+  min-width: 0;
 }
 
 .academic-panel-heading {
@@ -681,6 +682,7 @@ textarea:focus {
   border-radius: 12px;
   background: #ffffff;
   padding: 14px;
+  min-width: 0;
 }
 
 .academic-plan-item {
@@ -739,9 +741,19 @@ textarea:focus {
 
 .academic-course-row {
   display: grid;
-  grid-template-columns: 48px minmax(120px, 0.8fr) minmax(180px, 1.4fr) 110px 92px;
+  grid-template-columns: 48px minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(72px, 0.45fr) max-content;
   gap: 10px;
   align-items: center;
+  min-width: 0;
+}
+
+.academic-course-row > * {
+  min-width: 0;
+}
+
+.academic-course-row .btn {
+  white-space: nowrap;
+  justify-self: end;
 }
 
 .academic-course-number {
