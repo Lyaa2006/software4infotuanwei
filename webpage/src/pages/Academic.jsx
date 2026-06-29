@@ -380,7 +380,7 @@ export default function Academic() {
                       <div className="academic-plan-item-name">{p.name}</div>
                       <div className="academic-plan-item-meta">{p.updatedAtText || '未记录更新时间'}</div>
                     </div>
-                    <div className="inline-actions" style={{ marginTop: 0 }}>
+                    <div className="inline-actions academic-plan-item-actions" style={{ marginTop: 0 }}>
                       <button className="btn btn-secondary" onClick={() => onEditPlan(p)}>编辑</button>
                       <button className="btn btn-secondary" onClick={() => onDeletePlan(p._id || p.id)}>删除</button>
                     </div>
