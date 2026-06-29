@@ -688,6 +688,7 @@ textarea:focus {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
+  min-width: 0;
 }
 
 .academic-plan-item.active {
@@ -702,7 +703,24 @@ textarea:focus {
 }
 
 .academic-plan-item-main {
+  flex: 1 1 auto;
   min-width: 0;
+}
+
+.academic-plan-item-name,
+.academic-plan-item-meta {
+  overflow-wrap: anywhere;
+}
+
+.academic-plan-item-actions {
+  flex: 0 0 auto;
+  max-width: 100%;
+  justify-content: flex-end;
+}
+
+.academic-plan-item-actions .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .academic-module-header {
@@ -750,6 +768,15 @@ textarea:focus {
   .academic-module-grid,
   .academic-course-row {
     grid-template-columns: 1fr;
+  }
+
+  .academic-plan-item-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .academic-plan-item-actions .btn {
+    flex: 1 1 120px;
   }
 
   .academic-course-number {
