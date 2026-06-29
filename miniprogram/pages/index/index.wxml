@@ -25,8 +25,8 @@
       </label>
     </radio-group>
 
-    <view class="field_title">学工号</view>
-    <input class="input" placeholder="请输入学工号" value="{{accountId}}" bindinput="onAccountInput" />
+    <view class="field_title">学工号/账号</view>
+    <input class="input" placeholder="请输入学工号/账号" value="{{accountId}}" bindinput="onAccountInput" />
 
     <view class="field_title">密码</view>
     <input class="input" placeholder="请输入密码" password value="{{password}}" bindinput="onPasswordInput" />

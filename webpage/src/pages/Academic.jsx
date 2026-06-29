@@ -199,7 +199,12 @@ export default function Academic() {
   }
 
   function onEditPlan(item) {
-    applyPlanToEditor({ id: item._id || item.id || '', name: item.name || '', modules: item.modules || [] })
+    const nextId = String(item._id || item.id || '')
+    if (String(planEditingId) === nextId) {
+      onResetPlanForm()
+      return
+    }
+    applyPlanToEditor({ id: nextId, name: item.name || '', modules: item.modules || [] })
   }
 
   function updateModuleField(moduleId, field, value) {
@@ -261,14 +266,15 @@ export default function Academic() {
     if (hasInvalidCourse) { alert('请填写课程名称后再保存'); return }
     setSavingPlan(true)
     try {
+      let finalId = planEditingId
       if (planEditingId) await api.featureApi.academicAdminPlanUpdate({ id: planEditingId, name, modules })
       else {
         const resp = await api.featureApi.academicAdminPlanCreate({ name, modules })
-        if (resp?.id) setPlanEditingId(String(resp.id))
+        finalId = resp?.id ? String(resp.id) : ''
       }
       alert('已保存')
       await loadPlans()
-      applyPlanToEditor({ id: planEditingId, name, modules })
+      applyPlanToEditor({ id: finalId, name, modules })
     } catch (e) { alert(e?.message || '保存失败') }
     finally { setSavingPlan(false) }
   }
@@ -355,7 +361,6 @@ export default function Academic() {
         <div className="academic-admin-header">
           <div>
             <h3>管理员：培养方案管理</h3>
-            <p className="section-note">逐条维护模块和课程，不再直接编辑 JSON。</p>
           </div>
           <div className="inline-actions" style={{ marginTop: 0 }}>
             <button className="btn btn-secondary" onClick={onResetPlanForm}>新建方案</button>
@@ -381,7 +386,7 @@ export default function Academic() {
                       <div className="academic-plan-item-meta">{p.updatedAtText || '未记录更新时间'}</div>
                     </div>
                     <div className="inline-actions academic-plan-item-actions" style={{ marginTop: 0 }}>
-                      <button className="btn btn-secondary" onClick={() => onEditPlan(p)}>编辑</button>
+                      <button className="btn btn-secondary" onClick={() => onEditPlan(p)}>{String(planEditingId) === String(p._id || p.id) ? '取消编辑' : '编辑'}</button>
                       <button className="btn btn-secondary" onClick={() => onDeletePlan(p._id || p.id)}>删除</button>
                     </div>
                   </div>
@@ -393,7 +398,6 @@ export default function Academic() {
           <section className="academic-plan-editor">
             <div className="academic-panel-heading">
               <h4>{planEditingId ? '编辑方案' : '新建方案'}</h4>
-              <span className="academic-editor-hint">导入后也会落到这里继续调整</span>
             </div>
             <div className="form-row">
               <label className="form-label">方案名称</label>

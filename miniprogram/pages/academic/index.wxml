@@ -1,22 +1,22 @@
 <view class="container">
-  <view class="card">
+  <view class="card" wx:if="{{isStudent}}">
     <view class="section_title">学业预警</view>
     <view class="form_row">
       <view class="label">学期（用于推荐本学期开课）</view>
       <input class="input" placeholder="示例：2026-春 / 2026-秋" value="{{semester}}" bindinput="onSemesterInput" maxlength="16" />
     </view>
-    <view class="form_row" wx:if="{{isStudent}}">
+    <view class="form_row">
       <view class="label">培养方案</view>
       <picker mode="selector" range="{{planNames}}" value="{{planIndex}}" bindchange="onPlanPickerChange">
         <view class="input">{{selectedPlanName || '请选择培养方案'}}</view>
       </picker>
     </view>
-    <view class="btn_row" wx:if="{{isStudent}}">
+    <view class="btn_row">
       <button class="ghost" disabled="{{loading}}" bindtap="onReload">刷新</button>
       <button class="primary" type="primary" loading="{{uploading}}" disabled="{{uploading}}" bindtap="onChooseTranscript">上传成绩单</button>
     </view>
-    <view class="hint" wx:if="{{isStudent}}">可手动选择培养方案进行比对；未选择时会尝试从学生标签自动识别</view>
-    <view class="hint" wx:if="{{isStudent}}">支持 HTML / CSV / TXT。PDF 解析需后端额外依赖，若提示不支持请改传 HTML/CSV</view>
+    <view class="hint">可手动选择培养方案进行比对；未选择时会尝试从学生标签自动识别</view>
+    <view class="hint">支持 HTML / CSV / TXT，PDF 解析需依赖后端额外环境；若提示不支持请改传 HTML/CSV</view>
   </view>
 
   <view class="card" wx:if="{{isStudent && reportLoaded}}">
@@ -31,7 +31,7 @@
         <view class="item_meta">
           需 {{item.requiredCredits}} 学分 · 已修 {{item.earnedCredits}} 学分 · 缺 {{item.deficitCredits}} 学分
         </view>
-        <view class="{{item.deficitCredits > 0 ? 'badge_bad' : 'badge_ok'}}">{{item.deficitCredits > 0 ? '未修满' : '已满足'}}</view>
+        <view class="{{item.deficitCredits > 0 ? 'badge_bad' : 'badge_ok'}}">{{item.deficitCredits > 0 ? '未满足' : '已满足'}}</view>
       </view>
     </view>
   </view>
@@ -60,50 +60,82 @@
     <view class="hint" wx:if="{{!report.missingCourses.length}}">暂无未修课程</view>
   </view>
 
-  <view class="card" wx:if="{{isAdmin}}">
-    <view class="section_title">管理员：培养方案</view>
-    <view class="form_row">
-      <view class="label">方案名称</view>
-      <input class="input" placeholder="例如：计算机2023" value="{{planFormName}}" bindinput="onPlanNameInput" maxlength="60" />
-    </view>
-    <view class="form_row">
-      <view class="label">modules JSON（数组）</view>
-      <textarea class="textarea" placeholder="示例见下方提示" value="{{planFormModulesJson}}" bindinput="onPlanModulesInput" auto-height></textarea>
-      <view class="hint">格式示例：[{"name":"公共必修","requiredCredits":20,"courses":[{"code":"A001","name":"高等数学","credits":4}]}]</view>
-    </view>
-    <view class="btn_row">
-      <button class="ghost" disabled="{{loading}}" bindtap="onResetPlanForm">清空</button>
-      <button class="ghost" loading="{{importingPlan}}" disabled="{{importingPlan}}" bindtap="onImportPlanFile">导入</button>
-      <button class="primary" type="primary" loading="{{savingPlan}}" disabled="{{savingPlan}}" bindtap="onSavePlan">{{planEditingId ? '更新' : '新增'}}</button>
+  <view class="card admin_card" wx:if="{{isAdmin}}">
+    <view class="admin_header">
+      <view>
+        <view class="section_title">管理员：培养方案</view>
+      </view>
+      <view class="btn_stack">
+        <button class="ghost" bindtap="onCreatePlan">新建方案</button>
+        <button class="ghost" loading="{{importingPlan}}" disabled="{{importingPlan}}" bindtap="onImportPlanFile">导入培养方案</button>
+      </view>
     </view>
 
+    <view class="panel_title">已有方案</view>
     <view class="list" wx:if="{{plans.length}}">
-      <view class="item" wx:for="{{plans}}" wx:key="_id">
-        <view class="item_title">{{item.name}}</view>
-        <view class="item_meta">更新时间：{{item.updatedAtText}}</view>
-        <view class="btn_row">
-          <button size="mini" class="ghost" data-id="{{item._id}}" bindtap="onEditPlan">编辑</button>
-          <button size="mini" class="ghost" data-id="{{item._id}}" bindtap="onDeletePlan">删除</button>
+      <view class="item plan_item {{item.isEditing ? 'plan_item_active' : ''}}" wx:for="{{plans}}" wx:key="planKey">
+        <view>
+          <view class="item_title">{{item.name}}</view>
+          <view class="item_meta">更新时间：{{item.updatedAtText || '未记录'}}</view>
+        </view>
+        <view class="btn_row plan_item_actions">
+          <button size="mini" class="ghost" data-id="{{item.planKey}}" bindtap="onEditPlan">{{item.isEditing ? '取消编辑' : '编辑'}}</button>
+          <button size="mini" class="ghost" data-id="{{item.planKey}}" bindtap="onDeletePlan">删除</button>
         </view>
       </view>
     </view>
-    <view class="hint" wx:if="{{!plans.length}}">暂无培养方案</view>
-  </view>
+    <view class="hint" wx:if="{{!plans.length}}">暂无培养方案，可先导入 CSV，或直接在下方新建。</view>
 
-  <view class="card" wx:if="{{isAdmin}}">
-    <view class="section_title">管理员：本学期开课</view>
-    <view class="form_row">
-      <view class="label">学期</view>
-      <input class="input" placeholder="例如：2026-春" value="{{adminSemester}}" bindinput="onAdminSemesterInput" maxlength="16" />
-    </view>
-    <view class="form_row">
-      <view class="label">课程列表（CSV，每行：课程代码,课程名,学分,模块名）</view>
-      <textarea class="textarea" placeholder="A001,高等数学,4,公共必修" value="{{semesterCoursesCsv}}" bindinput="onSemesterCoursesInput" auto-height></textarea>
-    </view>
-    <view class="btn_row">
-      <button class="ghost" disabled="{{loading}}" bindtap="onLoadSemesterCourses">加载已配置</button>
-      <button class="primary" type="primary" loading="{{savingSemesterCourses}}" disabled="{{savingSemesterCourses}}" bindtap="onSaveSemesterCourses">保存</button>
-    </view>
-    <view class="hint" wx:if="{{semesterCoursesLoadedCount}}">已加载 {{semesterCoursesLoadedCount}} 条课程</view>
+    <block wx:if="{{showPlanEditor}}">
+      <view class="panel_title editor_title">{{planEditingId ? '编辑方案' : '新建方案'}}</view>
+      <view class="form_row">
+        <view class="label">方案名称</view>
+        <input class="input" placeholder="例如：2024级计算机科学与技术本科培养方案" value="{{planFormName}}" bindinput="onPlanNameInput" maxlength="60" />
+      </view>
+
+      <view class="module_list">
+        <view class="module_card" wx:for="{{planFormModules}}" wx:for-item="module" wx:for-index="moduleIndex" wx:key="localId">
+          <view class="module_header">
+            <view>
+              <view class="module_index">模块 {{moduleIndex + 1}}</view>
+              <view class="module_title">{{module.name || '未命名模块'}}</view>
+            </view>
+            <button size="mini" class="ghost" data-module-index="{{moduleIndex}}" bindtap="onRemoveModule">删除模块</button>
+          </view>
+
+          <view class="form_row">
+            <view class="label">模块名称</view>
+            <input class="input" data-module-index="{{moduleIndex}}" value="{{module.name}}" placeholder="例如：专业必修" bindinput="onModuleNameInput" />
+          </view>
+
+          <view class="form_row">
+            <view class="label">要求学分</view>
+            <input class="input" data-module-index="{{moduleIndex}}" value="{{module.requiredCredits}}" placeholder="例如：18" bindinput="onModuleCreditsInput" />
+          </view>
+
+          <view class="course_list">
+            <view class="course_row" wx:for="{{module.courses}}" wx:for-item="course" wx:for-index="courseIndex" wx:key="localId">
+              <view class="course_number">{{courseIndex + 1}}</view>
+              <view class="course_fields">
+                <input class="input compact_input" data-module-index="{{moduleIndex}}" data-course-index="{{courseIndex}}" value="{{course.code}}" placeholder="课程代码" bindinput="onCourseCodeInput" />
+                <input class="input compact_input" data-module-index="{{moduleIndex}}" data-course-index="{{courseIndex}}" value="{{course.name}}" placeholder="课程名称" bindinput="onCourseNameInput" />
+                <input class="input compact_input" data-module-index="{{moduleIndex}}" data-course-index="{{courseIndex}}" value="{{course.credits}}" placeholder="学分" bindinput="onCourseCreditsInput" />
+              </view>
+              <button size="mini" class="ghost course_delete" data-module-index="{{moduleIndex}}" data-course-index="{{courseIndex}}" bindtap="onRemoveCourse">删除</button>
+            </view>
+          </view>
+
+          <view class="btn_row left_actions">
+            <button size="mini" class="ghost" data-module-index="{{moduleIndex}}" bindtap="onAddCourse">新增课程</button>
+          </view>
+        </view>
+      </view>
+
+      <view class="btn_row wrap_actions">
+        <button class="ghost" bindtap="onAddModule">新增模块</button>
+        <button class="ghost" bindtap="onResetPlanForm">清空编辑区</button>
+        <button class="primary" type="primary" loading="{{savingPlan}}" disabled="{{savingPlan}}" bindtap="onSavePlan">保存方案</button>
+      </view>
+    </block>
   </view>
 </view>

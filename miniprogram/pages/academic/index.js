@@ -30,55 +30,62 @@ function tryParseJson(text) {
   }
 }
 
-function splitCsvLine(line) {
-  const s = String(line ?? "");
-  const out = [];
-  let cur = "";
-  let inQuote = false;
-  for (let i = 0; i < s.length; i += 1) {
-    const ch = s[i];
-    if (ch === '"') {
-      if (inQuote && s[i + 1] === '"') {
-        cur += '"';
-        i += 1;
-      } else {
-        inQuote = !inQuote;
-      }
-      continue;
-    }
-    if (!inQuote && ch === ",") {
-      out.push(cur);
-      cur = "";
-      continue;
-    }
-    cur += ch;
-  }
-  out.push(cur);
-  return out.map((x) => String(x ?? "").trim());
-}
-
-function parseSemesterCoursesCsv(text) {
-  const lines = String(text ?? "")
-    .replace(/\r/g, "")
-    .split("\n")
-    .map((x) => String(x).trim())
-    .filter(Boolean);
-  const out = [];
-  for (const line of lines) {
-    const cols = splitCsvLine(line);
-    const courseCode = String(cols[0] ?? "").trim();
-    const courseName = String(cols[1] ?? "").trim();
-    const credits = Number(String(cols[2] ?? "").trim() || 0);
-    const moduleName = String(cols[3] ?? "").trim();
-    if (!courseCode && !courseName) continue;
-    out.push({ courseCode, courseName, credits, moduleName });
-  }
-  return out;
-}
-
 function buildAuthHeader(session) {
   if (!session?.token) return {};
   return { Authorization: `Bearer ${session.token}` };
+}
+
+function buildLocalId(prefix, extra) {
+  return `${prefix}-${Date.now()}-${extra || ""}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createEmptyCourse() {
+  return {
+    localId: buildLocalId("course"),
+    code: "",
+    name: "",
+    credits: "",
+  };
+}
+
+function createEmptyModule() {
+  return {
+    localId: buildLocalId("module"),
+    name: "",
+    requiredCredits: "",
+    courses: [createEmptyCourse()],
+  };
+}
+
+function normalizePlanModules(modules) {
+  const list = Array.isArray(modules) ? modules : [];
+  return list.map((module, moduleIndex) => ({
+    localId: buildLocalId("module", moduleIndex),
+    name: String(module?.name ?? "").trim(),
+    requiredCredits: String(module?.requiredCredits ?? ""),
+    courses: (Array.isArray(module?.courses) ? module.courses : []).map((course, courseIndex) => ({
+      localId: buildLocalId("course", `${moduleIndex}-${courseIndex}`),
+      code: String(course?.code ?? "").trim(),
+      name: String(course?.name ?? "").trim(),
+      credits: String(course?.credits ?? ""),
+    })),
+  }));
+}
+
+function serializePlanModules(modules) {
+  return (Array.isArray(modules) ? modules : [])
+    .map((module) => ({
+      name: String(module?.name ?? "").trim(),
+      requiredCredits: Number(String(module?.requiredCredits ?? "").trim() || 0),
+      courses: (Array.isArray(module?.courses) ? module.courses : [])
+        .map((course) => ({
+          code: String(course?.code ?? "").trim(),
+          name: String(course?.name ?? "").trim(),
+          credits: Number(String(course?.credits ?? "").trim() || 0),
+        }))
+        .filter((course) => course.code || course.name),
+    }))
+    .filter((module) => module.name || module.courses.length);
 }
 
 Page({
@@ -101,15 +108,12 @@ Page({
       recommendations: [],
     },
     plans: [],
+    showPlanEditor: false,
     planEditingId: "",
     planFormName: "",
-    planFormModulesJson: "",
+    planFormModules: [createEmptyModule()],
     savingPlan: false,
     importingPlan: false,
-    adminSemester: "",
-    semesterCoursesCsv: "",
-    savingSemesterCourses: false,
-    semesterCoursesLoadedCount: 0,
   },
 
   onShow() {
@@ -120,7 +124,11 @@ Page({
       return;
     }
     const semester = this.data.semester || defaultSemesterFromNow();
-    this.setData({ isAdmin: session.role === "admin", isStudent: session.role === "student", semester });
+    this.setData({
+      isAdmin: session.role === "admin",
+      isStudent: session.role === "student",
+      semester,
+    });
     this.reloadAll();
   },
 
@@ -152,24 +160,41 @@ Page({
     const idx = Number(e.detail.value || 0);
     const names = Array.isArray(this.data.planNames) ? this.data.planNames : [];
     const selected = String(names[idx] ?? "");
-    this.setData({ planIndex: idx, selectedPlanName: selected });
-    this.loadReport();
-  },
-
-  onAdminSemesterInput(e) {
-    this.setData({ adminSemester: e.detail.value });
+    this.setData({ planIndex: idx, selectedPlanName: selected }, () => {
+      this.loadReport();
+    });
   },
 
   onPlanNameInput(e) {
     this.setData({ planFormName: e.detail.value });
   },
 
-  onPlanModulesInput(e) {
-    this.setData({ planFormModulesJson: e.detail.value });
+  onModuleNameInput(e) {
+    const moduleIndex = Number(e.currentTarget.dataset.moduleIndex);
+    this.updateModuleField(moduleIndex, "name", e.detail.value);
   },
 
-  onSemesterCoursesInput(e) {
-    this.setData({ semesterCoursesCsv: e.detail.value });
+  onModuleCreditsInput(e) {
+    const moduleIndex = Number(e.currentTarget.dataset.moduleIndex);
+    this.updateModuleField(moduleIndex, "requiredCredits", e.detail.value);
+  },
+
+  onCourseCodeInput(e) {
+    const moduleIndex = Number(e.currentTarget.dataset.moduleIndex);
+    const courseIndex = Number(e.currentTarget.dataset.courseIndex);
+    this.updateCourseField(moduleIndex, courseIndex, "code", e.detail.value);
+  },
+
+  onCourseNameInput(e) {
+    const moduleIndex = Number(e.currentTarget.dataset.moduleIndex);
+    const courseIndex = Number(e.currentTarget.dataset.courseIndex);
+    this.updateCourseField(moduleIndex, courseIndex, "name", e.detail.value);
+  },
+
+  onCourseCreditsInput(e) {
+    const moduleIndex = Number(e.currentTarget.dataset.moduleIndex);
+    const courseIndex = Number(e.currentTarget.dataset.courseIndex);
+    this.updateCourseField(moduleIndex, courseIndex, "credits", e.detail.value);
   },
 
   onReload() {
@@ -259,29 +284,52 @@ Page({
     });
   },
 
-  async loadPlans() {
+  async loadPlans(editingId) {
     const api = require("../../services/api");
     const resp = await api.featureApi.academicAdminPlans();
     const items = Array.isArray(resp.items) ? resp.items : [];
+    const currentEditingId =
+      editingId === undefined ? String(this.data.planEditingId || "") : String(editingId || "");
     const mapped = items.map((x) => ({
       ...x,
+      planKey: String(x._id || x.id || ""),
+      isEditing: currentEditingId && currentEditingId === String(x._id || x.id || ""),
       updatedAtText: formatDateTime(x.updatedAt),
     }));
     this.setData({ plans: mapped });
   },
 
+  applyPlanToEditor({ id = "", name = "", modules = [] }) {
+    const normalized = normalizePlanModules(modules);
+    this.setData({
+      showPlanEditor: true,
+      planEditingId: String(id || ""),
+      planFormName: String(name || ""),
+      planFormModules: normalized.length ? normalized : [createEmptyModule()],
+    });
+  },
+
+  onCreatePlan() {
+    this.setData({
+      showPlanEditor: true,
+      planEditingId: "",
+      planFormName: "",
+      planFormModules: [createEmptyModule()],
+    });
+  },
+
   onResetPlanForm() {
-    this.setData({ planEditingId: "", planFormName: "", planFormModulesJson: "" });
+    this.setData({
+      showPlanEditor: false,
+      planEditingId: "",
+      planFormName: "",
+      planFormModules: [createEmptyModule()],
+    });
   },
 
   onImportPlanFile() {
     if (this.data.importingPlan) return;
-    const name = String(this.data.planFormName || "").trim();
-    if (!name) {
-      wx.showToast({ title: "请先填写方案名称", icon: "none" });
-      return;
-    }
-
+    const draftName = String(this.data.planFormName || "").trim();
     const api = require("../../services/api");
     const session = api.auth.getSession();
     const baseUrl = api.getBaseUrl();
@@ -293,6 +341,7 @@ Page({
       success: async (res) => {
         const file = (res?.tempFiles || [])[0] || null;
         if (!file?.path) return;
+        const importName = draftName || String(file.name || "").replace(/\.[^.]+$/, "") || "imported";
         this.setData({ importingPlan: true });
         wx.showLoading({ title: "导入中..." });
         try {
@@ -302,7 +351,7 @@ Page({
               filePath: file.path,
               name: "file",
               formData: {
-                name,
+                name: importName,
                 originalName: String(file.name || ""),
                 originalMime: String(file.type || ""),
               },
@@ -314,14 +363,14 @@ Page({
           if (r?.err) throw new Error(r.err?.errMsg || "上传失败");
           const obj = tryParseJson(r.data);
           if (!obj?.success) throw new Error(obj?.message || "导入失败");
-          const modules = obj?.data?.modules || [];
-          const id = obj?.data?.id || "";
-          this.setData({
-            planEditingId: String(id || ""),
-            planFormModulesJson: JSON.stringify(modules, null, 2),
+          const data = obj?.data || {};
+          this.applyPlanToEditor({
+            id: data.id,
+            name: data.name || importName,
+            modules: data.modules || [],
           });
           wx.showToast({ title: "已导入", icon: "success" });
-          await this.loadPlans();
+          await this.loadPlans(String(data.id || ""));
         } catch (e) {
           wx.showToast({ title: e?.message || "导入失败", icon: "none" });
         } finally {
@@ -335,13 +384,19 @@ Page({
 
   onEditPlan(e) {
     const id = String(e.currentTarget.dataset.id || "");
-    const found = (this.data.plans || []).find((x) => String(x._id) === id);
+    if (String(this.data.planEditingId || "") === id) {
+      this.onResetPlanForm();
+      this.loadPlans("");
+      return;
+    }
+    const found = (this.data.plans || []).find((x) => String(x.planKey || "") === id);
     if (!found) return;
-    this.setData({
-      planEditingId: found._id,
-      planFormName: found.name || "",
-      planFormModulesJson: JSON.stringify(found.modules || [], null, 2),
+    this.applyPlanToEditor({
+      id: found.planKey || "",
+      name: found.name || "",
+      modules: found.modules || [],
     });
+    this.loadPlans(found.planKey || "");
   },
 
   async onDeletePlan(e) {
@@ -358,7 +413,9 @@ Page({
           await api.featureApi.academicAdminPlanDelete({ id });
           wx.showToast({ title: "已删除", icon: "success" });
           await this.loadPlans();
-          this.onResetPlanForm();
+          if (String(this.data.planEditingId) === String(id)) {
+            this.onResetPlanForm();
+          }
         } catch (e2) {
           wx.showToast({ title: e2?.message || "删除失败", icon: "none" });
         } finally {
@@ -368,6 +425,66 @@ Page({
     });
   },
 
+  updateModuleField(moduleIndex, field, value) {
+    const list = (this.data.planFormModules || []).map((module, index) => {
+      if (index !== moduleIndex) return module;
+      return { ...module, [field]: value };
+    });
+    this.setData({ planFormModules: list });
+  },
+
+  updateCourseField(moduleIndex, courseIndex, field, value) {
+    const list = (this.data.planFormModules || []).map((module, mIndex) => {
+      if (mIndex !== moduleIndex) return module;
+      const courses = (module.courses || []).map((course, cIndex) => {
+        if (cIndex !== courseIndex) return course;
+        return { ...course, [field]: value };
+      });
+      return { ...module, courses };
+    });
+    this.setData({ planFormModules: list });
+  },
+
+  onAddModule() {
+    this.setData({
+      planFormModules: [...(this.data.planFormModules || []), createEmptyModule()],
+    });
+  },
+
+  onRemoveModule(e) {
+    const moduleIndex = Number(e.currentTarget.dataset.moduleIndex);
+    const current = Array.isArray(this.data.planFormModules) ? this.data.planFormModules : [];
+    const next = current.filter((_, index) => index !== moduleIndex);
+    this.setData({ planFormModules: next.length ? next : [createEmptyModule()] });
+  },
+
+  onAddCourse(e) {
+    const moduleIndex = Number(e.currentTarget.dataset.moduleIndex);
+    const list = (this.data.planFormModules || []).map((module, index) => {
+      if (index !== moduleIndex) return module;
+      return {
+        ...module,
+        courses: [...(Array.isArray(module.courses) ? module.courses : []), createEmptyCourse()],
+      };
+    });
+    this.setData({ planFormModules: list });
+  },
+
+  onRemoveCourse(e) {
+    const moduleIndex = Number(e.currentTarget.dataset.moduleIndex);
+    const courseIndex = Number(e.currentTarget.dataset.courseIndex);
+    const list = (this.data.planFormModules || []).map((module, mIndex) => {
+      if (mIndex !== moduleIndex) return module;
+      const currentCourses = Array.isArray(module.courses) ? module.courses : [];
+      const nextCourses = currentCourses.filter((_, index) => index !== courseIndex);
+      return {
+        ...module,
+        courses: nextCourses.length ? nextCourses : [createEmptyCourse()],
+      };
+    });
+    this.setData({ planFormModules: list });
+  },
+
   async onSavePlan() {
     if (this.data.savingPlan) return;
     const name = String(this.data.planFormName || "").trim();
@@ -375,15 +492,18 @@ Page({
       wx.showToast({ title: "请填写方案名称", icon: "none" });
       return;
     }
-    let modules;
-    try {
-      modules = JSON.parse(String(this.data.planFormModulesJson || "").trim() || "[]");
-    } catch {
-      wx.showToast({ title: "modules JSON 不合法", icon: "none" });
+
+    const modules = serializePlanModules(this.data.planFormModules);
+    if (!modules.length) {
+      wx.showToast({ title: "请至少填写一个模块或课程", icon: "none" });
       return;
     }
-    if (!Array.isArray(modules)) {
-      wx.showToast({ title: "modules 必须是数组", icon: "none" });
+    if (modules.some((module) => !module.name)) {
+      wx.showToast({ title: "请填写每个模块的名称", icon: "none" });
+      return;
+    }
+    if (modules.some((module) => module.courses.some((course) => !course.name))) {
+      wx.showToast({ title: "请填写课程名称后再保存", icon: "none" });
       return;
     }
 
@@ -391,62 +511,25 @@ Page({
     wx.showLoading({ title: "保存中..." });
     try {
       const api = require("../../services/api");
+      let finalId = this.data.planEditingId;
       if (this.data.planEditingId) {
-        await api.featureApi.academicAdminPlanUpdate({ id: this.data.planEditingId, name, modules });
+        await api.featureApi.academicAdminPlanUpdate({
+          id: this.data.planEditingId,
+          name,
+          modules,
+        });
       } else {
-        await api.featureApi.academicAdminPlanCreate({ name, modules });
+        const resp = await api.featureApi.academicAdminPlanCreate({ name, modules });
+        finalId = resp?.id ? String(resp.id) : "";
       }
       wx.showToast({ title: "已保存", icon: "success" });
-      await this.loadPlans();
-      this.onResetPlanForm();
+      this.applyPlanToEditor({ id: finalId, name, modules });
+      await this.loadPlans(finalId);
     } catch (e) {
       wx.showToast({ title: e?.message || "保存失败", icon: "none" });
     } finally {
       wx.hideLoading();
       this.setData({ savingPlan: false });
-    }
-  },
-
-  async onLoadSemesterCourses() {
-    const semester = String(this.data.adminSemester || "").trim() || defaultSemesterFromNow();
-    wx.showLoading({ title: "加载中..." });
-    try {
-      const api = require("../../services/api");
-      const resp = await api.featureApi.academicAdminSemesterCourses({ semester });
-      const items = Array.isArray(resp.items) ? resp.items : [];
-      const csv = items
-        .map((x) => `${x.courseCode || ""},${x.courseName || ""},${x.credits || 0},${x.moduleName || ""}`)
-        .join("\n");
-      this.setData({ adminSemester: semester, semesterCoursesCsv: csv, semesterCoursesLoadedCount: items.length });
-      wx.showToast({ title: "已加载", icon: "success" });
-    } catch (e) {
-      wx.showToast({ title: e?.message || "加载失败", icon: "none" });
-    } finally {
-      wx.hideLoading();
-    }
-  },
-
-  async onSaveSemesterCourses() {
-    if (this.data.savingSemesterCourses) return;
-    const semester = String(this.data.adminSemester || "").trim() || defaultSemesterFromNow();
-    const items = parseSemesterCoursesCsv(this.data.semesterCoursesCsv);
-    if (!items.length) {
-      wx.showToast({ title: "课程列表为空", icon: "none" });
-      return;
-    }
-    this.setData({ savingSemesterCourses: true });
-    wx.showLoading({ title: "保存中..." });
-    try {
-      const api = require("../../services/api");
-      await api.featureApi.academicAdminSemesterCoursesSave({ semester, items });
-      wx.showToast({ title: "已保存", icon: "success" });
-      this.setData({ adminSemester: semester });
-      await this.onLoadSemesterCourses();
-    } catch (e) {
-      wx.showToast({ title: e?.message || "保存失败", icon: "none" });
-    } finally {
-      wx.hideLoading();
-      this.setData({ savingSemesterCourses: false });
     }
   },
 });
