@@ -378,7 +378,6 @@ export default function Reminder() {
     return (
       <div className='card' style={{ marginTop: 12 }}>
         <h3>管理员：发送通知</h3>
-        <p className='section-note'>站内通知会进入学生网页端提醒列表；邮件通知会发送至学生邮箱，并受 5 分钟一次的发送限制。</p>
         {status ? <p className='section-note' style={{ color: '#16a34a' }}>{status}</p> : null}
         <div className='form-row'>
           <label>通知标题</label>
