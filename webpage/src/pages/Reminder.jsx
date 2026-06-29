@@ -6,6 +6,9 @@ import { logFilteredNonStudentRecords, normalizeStudentRecords } from '../utils/
 
 const TARGET_ALL = 'all'
 const TARGET_TAGS = 'tags'
+const TARGET_BATCH = 'batch'
+const SEND_SITE = 'site'
+const SEND_EMAIL = 'email'
 
 function pad2(n) { return String(n).padStart(2, '0') }
 function formatDateTime(ts) {
@@ -57,9 +60,12 @@ export default function Reminder() {
   const [availableTags, setAvailableTags] = useState([])
   const [formTitle, setFormTitle] = useState('')
   const [formContent, setFormContent] = useState('')
+  const [formSendMethod, setFormSendMethod] = useState(SEND_SITE)
   const [formTargetType, setFormTargetType] = useState(TARGET_ALL)
   const [formTagsText, setFormTagsText] = useState('')
   const [selectedTags, setSelectedTags] = useState([])
+  const [studentRows, setStudentRows] = useState([])
+  const [selectedAccounts, setSelectedAccounts] = useState([])
   const [sending, setSending] = useState(false)
   const [status, setStatus] = useState('')
 
@@ -78,7 +84,7 @@ export default function Reminder() {
       setIsAdmin(admin)
       if (admin) {
         await loadAdminMessages()
-        await loadAvailableTags()
+        await loadStudentTargetData()
       }
     } catch (e) {
       // Individual loaders already keep their own fallback state.
@@ -105,13 +111,15 @@ export default function Reminder() {
     }
   }
 
-  async function loadAvailableTags() {
+  async function loadStudentTargetData() {
     try {
       const r = await api.featureApi.reminderAdminStudents()
       logFilteredNonStudentRecords('reminder-tags', r.items)
       const studentRows = normalizeStudentRecords(r.items).map(mapStudentTags)
+      setStudentRows(studentRows)
       setAvailableTags(collectAvailableTags(studentRows))
     } catch (e) {
+      setStudentRows([])
       setAvailableTags([])
     }
   }
@@ -128,19 +136,37 @@ export default function Reminder() {
     }
   }
 
-  function resetForm() {
+  function resetForm(clearStatus = true) {
     setFormTitle('')
     setFormContent('')
+    setFormSendMethod(SEND_SITE)
     setFormTargetType(TARGET_ALL)
     setFormTagsText('')
     setSelectedTags([])
-    setStatus('')
+    setSelectedAccounts([])
+    if (clearStatus) setStatus('')
+  }
+
+  function changeSendMethod(method) {
+    const nextMethod = method === SEND_EMAIL ? SEND_EMAIL : SEND_SITE
+    setFormSendMethod(nextMethod)
+    if (nextMethod === SEND_SITE && formTargetType === TARGET_BATCH) {
+      changeTargetType(TARGET_ALL)
+    }
   }
 
   function changeTargetType(type) {
-    const nextType = type === TARGET_TAGS ? TARGET_TAGS : TARGET_ALL
+    const nextType = type === TARGET_TAGS ? TARGET_TAGS : type === TARGET_BATCH ? TARGET_BATCH : TARGET_ALL
     setFormTargetType(nextType)
     if (nextType === TARGET_ALL) {
+      setSelectedTags([])
+      setFormTagsText('')
+      setSelectedAccounts([])
+    }
+    if (nextType === TARGET_TAGS) {
+      setSelectedAccounts([])
+    }
+    if (nextType === TARGET_BATCH) {
       setSelectedTags([])
       setFormTagsText('')
     }
@@ -158,7 +184,19 @@ export default function Reminder() {
     if (!title) return { ok: false, message: '请填写通知标题' }
     if (!content) return { ok: false, message: '请填写通知内容' }
     if (formTargetType === TARGET_TAGS && !targetTags.length) return { ok: false, message: '请选择至少一个标签' }
+    if (formSendMethod === SEND_SITE && formTargetType === TARGET_BATCH) return { ok: false, message: '站内发送不支持批量选择，请切换为邮件发送' }
+    if (formSendMethod === SEND_EMAIL && formTargetType === TARGET_BATCH && !selectedAccounts.length) return { ok: false, message: '请选择至少一名学生' }
     return { ok: true, title, content }
+  }
+
+  function estimateTargetCount() {
+    if (formTargetType === TARGET_ALL) return studentRows.length
+    if (formTargetType === TARGET_BATCH) return selectedAccounts.length
+    if (formTargetType === TARGET_TAGS) {
+      const wanted = new Set(targetTags)
+      return studentRows.filter(row => normalizeTagList(row.tags).some(tag => wanted.has(tag))).length
+    }
+    return 0
   }
 
   function buildSendPayload() {
@@ -171,6 +209,7 @@ export default function Reminder() {
         content: checked.content,
         targetType: formTargetType,
         targetTags: formTargetType === TARGET_TAGS ? targetTags : [],
+        targetAccounts: formTargetType === TARGET_BATCH ? selectedAccounts : [],
       },
     }
   }
@@ -183,9 +222,20 @@ export default function Reminder() {
     setSending(true)
     setStatus('')
     try {
-      await api.featureApi.reminderAdminSend(built.payload)
-      setStatus('通知已发送')
-      resetForm()
+      if (formSendMethod === SEND_EMAIL) {
+        const count = estimateTargetCount()
+        const confirmed = window.confirm(`确认通过邮件发送该通知？\n\n标题：${built.payload.title}\n预计收件人数：${count}\n\n邮件通知 5 分钟内仅允许发送一次。`)
+        if (!confirmed) {
+          setSending(false)
+          return
+        }
+        const resp = await api.featureApi.reminderAdminSendEmail(built.payload)
+        setStatus(`邮件已发送，成功 ${resp?.successCount || 0} 人，失败 ${resp?.failCount || 0} 人`)
+      } else {
+        await api.featureApi.reminderAdminSend(built.payload)
+        setStatus('站内通知已发送')
+      }
+      resetForm(false)
       await loadAdminMessages()
       await loadMyMessages()
     } catch (e) {
@@ -212,6 +262,24 @@ export default function Reminder() {
     )
   }
 
+  function renderSendMethodSelector() {
+    return (
+      <div className='form-row'>
+        <label>通知发送方式</label>
+        <div className='target-option-group'>
+          <label className={'target-option ' + (formSendMethod === SEND_SITE ? 'active' : '')}>
+            <input type='radio' name='send-method' checked={formSendMethod === SEND_SITE} onChange={() => changeSendMethod(SEND_SITE)} />
+            <span>网站内发送</span>
+          </label>
+          <label className={'target-option ' + (formSendMethod === SEND_EMAIL ? 'active' : '')}>
+            <input type='radio' name='send-method' checked={formSendMethod === SEND_EMAIL} onChange={() => changeSendMethod(SEND_EMAIL)} />
+            <span>邮件发送</span>
+          </label>
+        </div>
+      </div>
+    )
+  }
+
   function renderTargetTypeSelector() {
     return (
       <div className='form-row'>
@@ -225,6 +293,50 @@ export default function Reminder() {
             <input type='radio' name='target' checked={formTargetType === TARGET_TAGS} onChange={() => changeTargetType(TARGET_TAGS)} />
             <span>按标签发送</span>
           </label>
+          {formSendMethod === SEND_EMAIL ? (
+            <label className={'target-option ' + (formTargetType === TARGET_BATCH ? 'active' : '')}>
+              <input type='radio' name='target' checked={formTargetType === TARGET_BATCH} onChange={() => changeTargetType(TARGET_BATCH)} />
+              <span>批量选择</span>
+            </label>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  function toggleStudentAccount(accountId) {
+    const id = String(accountId || '').trim()
+    if (!id) return
+    setSelectedAccounts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  function renderBatchTargetPanel() {
+    if (formSendMethod !== SEND_EMAIL || formTargetType !== TARGET_BATCH) return null
+    return (
+      <div className='tag-target-panel'>
+        <div className='section-heading' style={{ marginBottom: 10 }}>
+          <div>
+            <div className='section-title'>选择收件学生</div>
+            <div className='section-note'>已选择 {selectedAccounts.length} 人，邮件将发送至“学号@ruc.edu.cn”。</div>
+          </div>
+          <div className='inline-actions' style={{ marginTop: 0 }}>
+            <button className='btn btn-secondary' type='button' onClick={() => setSelectedAccounts(studentRows.map(s => s.accountId).filter(Boolean))}>全选</button>
+            <button className='btn btn-secondary' type='button' onClick={() => setSelectedAccounts([])}>清空</button>
+          </div>
+        </div>
+        <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid #dbe4ee', borderRadius: 12, background: '#fff' }}>
+          {studentRows.length ? studentRows.map(student => {
+            const accountId = String(student.accountId || '')
+            return (
+              <label key={accountId} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '10px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer' }}>
+                <input style={{ width: 'auto', minHeight: 'auto', marginTop: 3 }} type='checkbox' checked={selectedAccounts.includes(accountId)} onChange={() => toggleStudentAccount(accountId)} />
+                <span>
+                  <span style={{ display: 'block', fontWeight: 700 }}>{student.name || '未填写姓名'} · {accountId}</span>
+                  <span className='section-note'>{normalizeTagList(student.tags).join('、') || '暂无标签'} · {accountId}@ruc.edu.cn</span>
+                </span>
+              </label>
+            )
+          }) : <div className='section-note' style={{ padding: 14 }}>暂无可选择学生。</div>}
         </div>
       </div>
     )
@@ -266,7 +378,7 @@ export default function Reminder() {
     return (
       <div className='card' style={{ marginTop: 12 }}>
         <h3>管理员：发送通知</h3>
-        <p className='section-note'>Reminder 只负责选择通知目标并发送；学生标签请在“学生标签管理”页面维护。</p>
+        <p className='section-note'>站内通知会进入学生网页端提醒列表；邮件通知会发送至学生邮箱，并受 5 分钟一次的发送限制。</p>
         {status ? <p className='section-note' style={{ color: '#16a34a' }}>{status}</p> : null}
         <div className='form-row'>
           <label>通知标题</label>
@@ -277,8 +389,10 @@ export default function Reminder() {
           <textarea rows={6} placeholder='请输入通知内容' value={formContent} onChange={e => setFormContent(e.target.value)} />
         </div>
 
+        {renderSendMethodSelector()}
         {renderTargetTypeSelector()}
         {renderTagTargetPanel()}
+        {renderBatchTargetPanel()}
 
         <div className='inline-actions'>
           <button className='btn' type='button' onClick={sendMessage} disabled={sending}>{sending ? '发送中...' : '发送'}</button>
