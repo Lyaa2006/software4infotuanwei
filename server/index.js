@@ -349,6 +349,28 @@ function buildCertTemplateValues({ baseValues, query, fieldKeys }) {
   return values;
 }
 
+function isCertDateFieldKey(key) {
+  const k = String(key ?? "").trim();
+  if (!k) return false;
+  return /(^|[_-])(date|day|deadline|due|time)([_-]|$)/i.test(k)
+    || /(date|day|deadline|due|time)$/i.test(k)
+    || /日期|时间|年月日/.test(k);
+}
+
+function validateCertTemplateDateValues({ values, fieldKeys, minYmd, maxYmd }) {
+  const keys = Array.isArray(fieldKeys) ? fieldKeys : [];
+  for (const key of keys) {
+    if (!isCertDateFieldKey(key)) continue;
+    const raw = String(values?.[key] ?? "").trim();
+    if (!raw) continue;
+    const normalized = normalizeYmdInput(raw);
+    if (!normalized) return `${key}格式错误，应为真实的 YYYY-MM-DD`;
+    const rangeError = validateDateRangeYmd(String(key), normalized, minYmd, maxYmd);
+    if (rangeError) return rangeError;
+  }
+  return "";
+}
+
 function xlsxWorkbookToHtmlText(wb, XLSX) {
   const parts = [];
   const names = Array.isArray(wb?.SheetNames) ? wb.SheetNames : [];
@@ -724,6 +746,22 @@ function localTodayYmd() {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return y + '-' + m + '-' + day;
+}
+
+function enrollmentDateMinYmd(accountId) {
+  const s = String(accountId ?? "").trim();
+  const match = s.match(/^(\d{4})/);
+  const year = Number(match?.[1] || 0);
+  const currentYear = Number(localTodayYmd().slice(0, 4));
+  if (year >= 1900 && year <= currentYear) return `${year}-01-01`;
+  return "1900-01-01";
+}
+
+function validateDateRangeYmd(label, value, minYmd, maxYmd) {
+  if (!value) return "";
+  if (minYmd && value < minYmd) return `${label}不能早于${minYmd}`;
+  if (maxYmd && value > maxYmd) return `${label}不能晚于${maxYmd}`;
+  return "";
 }
 
 function validatePartyDateOrder(dates) {
@@ -2572,6 +2610,7 @@ async function main() {
       if (hasInvalidYmdInput(req.body?.probationaryFullYearDate)) return fail(res, "INVALID_DATE", "预备期满一年时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
       if (hasInvalidYmdInput(req.body?.fullMemberDate)) return fail(res, "INVALID_DATE", "转为正式党员时间格式错误或日期无效，应为真实的 YYYY-MM-DD");
       const today = localTodayYmd();
+      const dateMin = enrollmentDateMinYmd(accountId);
       const futureDateError = validatePartyHistoricalDatesNotFuture({
         applicationDate,
         activistDate,
@@ -2581,6 +2620,15 @@ async function main() {
         fullMemberDate,
       }, today);
       if (futureDateError) return fail(res, 'FUTURE_PARTY_DATE', futureDateError);
+      const partyRangeError = [
+        ["入党申请时间", applicationDate],
+        ["确定为入党积极分子时间", activistDate],
+        ["确定为发展对象时间", devObjectDate],
+        ["接收为预备党员时间", probationaryDate],
+        ["预备期满一年时间", probationaryFullYearDate],
+        ["转为正式党员时间", fullMemberDate],
+      ].map(([label, value]) => validateDateRangeYmd(label, value, dateMin, today)).find(Boolean);
+      if (partyRangeError) return fail(res, "INVALID_DATE", partyRangeError);
 
       const dateOrderError = validatePartyDateOrder({
         applicationDate,
@@ -2626,6 +2674,11 @@ async function main() {
         : activistDate
           ? nextDueFromStart({ startYmd: activistDate, periodMonths: 6, nowYmd: today })
           : null;
+      const nextDueRangeError = [
+        ["思想汇报截止日期", nextReportDue],
+        ["谈话截止日期", nextTalkDue],
+      ].map(([label, value]) => validateDateRangeYmd(label, value, dateMin, today)).find(Boolean);
+      if (nextDueRangeError) return fail(res, "INVALID_DATE", nextDueRangeError);
 
       const now = Date.now();
       const update = await pool.query(
@@ -3187,6 +3240,8 @@ async function main() {
             const schema = extractXlsxHeaderSchema(wb, XLSX);
             const headers = Array.isArray(schema?.headers) ? schema.headers : [];
             const values = buildCertTemplateValues({ baseValues, query: req.query, fieldKeys: headers });
+            const dateError = validateCertTemplateDateValues({ values, fieldKeys: headers, minYmd: enrollmentDateMinYmd(accountId), maxYmd: localTodayYmd() });
+            if (dateError) return fail(res, "INVALID_DATE", dateError);
             for (const h of headers) {
               if (String(values[h] ?? "")) continue;
               const inferred = inferAutoValueByHeader(h, baseValues);
@@ -3211,6 +3266,8 @@ async function main() {
         const raw = fs.readFileSync(full, "utf8");
         const fieldKeys = extractTemplateFieldKeys(raw);
         const values = buildCertTemplateValues({ baseValues, query: req.query, fieldKeys });
+        const dateError = validateCertTemplateDateValues({ values, fieldKeys, minYmd: enrollmentDateMinYmd(accountId), maxYmd: localTodayYmd() });
+        if (dateError) return fail(res, "INVALID_DATE", dateError);
         const rendered = renderTemplateText(raw, values);
         html = wrapHtml(rendered);
       }
@@ -3347,7 +3404,10 @@ async function main() {
       const issuer = String(req.body?.issuer ?? "").trim();
       const honorDate = normalizeYmdInput(req.body?.honorDate);
       if (hasInvalidYmdInput(req.body?.honorDate)) return fail(res, "INVALID_DATE", "荣誉日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
-      if (honorDate && honorDate > localTodayYmd()) return fail(res, "INVALID_DATE", "荣誉日期不能设置为未来日期");
+      const todayYmd = localTodayYmd();
+      const dateMin = enrollmentDateMinYmd(accountId);
+      if (honorDate && honorDate > todayYmd) return fail(res, "INVALID_DATE", "荣誉日期不能设置为未来日期");
+      if (honorDate && honorDate < dateMin) return fail(res, "INVALID_DATE", `荣誉日期不能早于${dateMin}`);
       const isPublic = req.body?.isPublic === false ? false : true;
       const imagePath = normalizeAssetPath(req.body?.imagePath);
 
@@ -3378,7 +3438,10 @@ async function main() {
       const issuer = String(req.body?.issuer ?? "").trim();
       const honorDate = normalizeYmdInput(req.body?.honorDate);
       if (hasInvalidYmdInput(req.body?.honorDate)) return fail(res, "INVALID_DATE", "荣誉日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
-      if (honorDate && honorDate > localTodayYmd()) return fail(res, "INVALID_DATE", "荣誉日期不能设置为未来日期");
+      const todayYmd = localTodayYmd();
+      const dateMin = enrollmentDateMinYmd(accountId);
+      if (honorDate && honorDate > todayYmd) return fail(res, "INVALID_DATE", "荣誉日期不能设置为未来日期");
+      if (honorDate && honorDate < dateMin) return fail(res, "INVALID_DATE", `荣誉日期不能早于${dateMin}`);
       const isPublic = req.body?.isPublic === false ? false : true;
       const imagePath = normalizeAssetPath(req.body?.imagePath);
 
@@ -4118,6 +4181,10 @@ async function main() {
       const summary = String(req.body?.summary ?? "").trim();
       const activityDate = normalizeYmdInput(req.body?.activityDate);
       if (hasInvalidYmdInput(req.body?.activityDate)) return fail(res, "INVALID_DATE", "活动日期格式错误或日期无效，应为真实的 YYYY-MM-DD");
+      const todayYmd = localTodayYmd();
+      const dateMin = enrollmentDateMinYmd(accountId);
+      if (activityDate && activityDate > todayYmd) return fail(res, "INVALID_DATE", "活动日期不能晚于今天");
+      if (activityDate && activityDate < dateMin) return fail(res, "INVALID_DATE", `活动日期不能早于${dateMin}`);
       const targetTag = String(req.body?.targetTag ?? "").trim();
       const targetTags = normalizeStringArray(targetTag.split(/[ ,，、\n\r\t]+/));
       const photoPaths = normalizeStringArray(req.body?.photoPaths);

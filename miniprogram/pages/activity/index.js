@@ -10,6 +10,15 @@ function localTodayYmd() {
   return `${y}-${m}-${day}`;
 }
 
+function enrollmentDateMin(accountId) {
+  const s = String(accountId || "").trim();
+  const match = s.match(/^(\d{4})/);
+  const year = Number(match?.[1] || 0);
+  const currentYear = Number(localTodayYmd().slice(0, 4));
+  if (year >= 1900 && year <= currentYear) return `${year}-01-01`;
+  return "1900-01-01";
+}
+
 function formatYmd(ymd) {
   const s = String(ymd ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
@@ -22,6 +31,14 @@ function isValidYmd(ymd) {
   const [y, m, d] = s.split("-").map((x) => Number(x));
   const dt = new Date(Date.UTC(y, m - 1, d));
   return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d;
+}
+
+function isDateWithinRange(value, min, max) {
+  const s = formatYmd(value);
+  if (!s) return false;
+  if (min && s < min) return false;
+  if (max && s > max) return false;
+  return true;
 }
 
 function formatDateTime(ts) {
@@ -102,6 +119,7 @@ Page({
     editingId: "",
     editingRejectReason: "",
     today: localTodayYmd(),
+    dateMin: "1900-01-01",
     formTitle: "",
     formDate: "",
     formSummary: "",
@@ -124,6 +142,7 @@ Page({
       isAdmin: session.role === "admin",
       isStudent: session.role === "student",
       today: localTodayYmd(),
+      dateMin: enrollmentDateMin(session.accountId),
     });
     this.reloadAll();
   },
@@ -377,6 +396,10 @@ Page({
     const date = String(this.data.formDate || "").trim();
     if (date && !isValidYmd(date)) {
       wx.showToast({ title: "日期无效", icon: "none" });
+      return;
+    }
+    if (date && !isDateWithinRange(date, this.data.dateMin, this.data.today)) {
+      wx.showToast({ title: `日期需在${this.data.dateMin}到${this.data.today}之间`, icon: "none" });
       return;
     }
 

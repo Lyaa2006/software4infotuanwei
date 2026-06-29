@@ -60,6 +60,7 @@ function fieldLabel(key) {
     name: "姓名",
     accountId: "学号",
     date: "日期",
+    日期: "日期",
   };
   return map[k] || k;
 }
@@ -82,7 +83,33 @@ function isMultilineField(key) {
 function isDateField(key) {
   const k = String(key ?? "").trim();
   if (!k) return false;
-  return /(^|[_-])(date|day|deadline|due)([_-]|$)/i.test(k) || /(date|day|deadline|due)$/i.test(k);
+  return /(^|[_-])(date|day|deadline|due|time)([_-]|$)/i.test(k)
+    || /(date|day|deadline|due|time)$/i.test(k)
+    || /日期|时间|年月日/.test(k);
+}
+
+function isValidYmd(value) {
+  const s = String(value ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map((x) => Number(x));
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d;
+}
+
+function isDateWithinRange(value, min, max) {
+  if (!isValidYmd(value)) return false;
+  if (min && value < min) return false;
+  if (max && value > max) return false;
+  return true;
+}
+
+function enrollmentDateMin(accountId) {
+  const s = String(accountId || "").trim();
+  const match = s.match(/^(\d{4})/);
+  const year = Number(match?.[1] || 0);
+  const currentYear = Number(localTodayYmd().slice(0, 4));
+  if (year >= 1900 && year <= currentYear) return `${year}-01-01`;
+  return "1900-01-01";
 }
 
 function localTodayYmd() {
@@ -103,6 +130,7 @@ Page({
     selectedTemplateTitle: "",
     selectedTemplateMeta: "",
     today: localTodayYmd(),
+    dateMin: "1900-01-01",
     manualFields: [],
     uploadTitle: "",
     uploadCategory: "",
@@ -119,7 +147,11 @@ Page({
       wx.reLaunch({ url: "/pages/index/index" });
       return;
     }
-    this.setData({ isAdmin: session.role === "admin", today: localTodayYmd() });
+    this.setData({
+      isAdmin: session.role === "admin",
+      today: localTodayYmd(),
+      dateMin: enrollmentDateMin(session.accountId),
+    });
     this.loadTemplates();
   },
 
@@ -354,6 +386,11 @@ Page({
   downloadAndOpenPdf({ showMenu }) {
     const id = String(this.data.selectedTemplateId || "");
     if (!id) return;
+    const dateError = this.validateManualDateFields();
+    if (dateError) {
+      wx.showToast({ title: dateError, icon: "none" });
+      return;
+    }
     const api = require("../../services/api");
     const session = api.auth.getSession();
     const params = {};
@@ -391,6 +428,20 @@ Page({
         wx.showToast({ title: err?.errMsg || "生成失败", icon: "none" });
       },
     });
+  },
+
+  validateManualDateFields() {
+    for (const f of this.data.manualFields || []) {
+      if (!f?.isDate) continue;
+      const label = String(f?.label || f?.key || "日期");
+      const value = String(f?.value || "").trim();
+      if (!value) continue;
+      if (!isValidYmd(value)) return `${label}格式错误，应为真实的 YYYY-MM-DD`;
+      if (!isDateWithinRange(value, this.data.dateMin, this.data.today)) {
+        return `${label}需在${this.data.dateMin}到${this.data.today}之间`;
+      }
+    }
+    return "";
   },
 
   onDeleteTemplate(e) {

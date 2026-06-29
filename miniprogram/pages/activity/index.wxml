@@ -8,11 +8,11 @@
     </view>
     <view class="form_row">
       <view class="label">日期（可选）</view>
-      <picker mode="date" value="{{formDate || today}}" bindchange="onFormDateChange">
-        <view class="picker">{{formDate || '请选择日期'}}</view>
-      </picker>
-      <view class="field_actions">
-        <button size="mini" class="ghost small_btn" disabled="{{!formDate}}" bindtap="onClearFormDate">清空日期</button>
+      <view class="picker_row">
+        <picker class="picker_cell" mode="date" start="{{dateMin}}" end="{{today}}" value="{{formDate || today}}" bindchange="onFormDateChange">
+          <view class="picker">{{formDate || '请选择日期'}}</view>
+        </picker>
+        <button size="mini" class="ghost small_btn date_clear_btn" disabled="{{!formDate}}" bindtap="onClearFormDate">清空日期</button>
       </view>
     </view>
     <view class="form_row">

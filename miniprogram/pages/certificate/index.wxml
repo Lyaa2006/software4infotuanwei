@@ -21,11 +21,11 @@
       <view class="form_row" wx:for="{{manualFields}}" wx:key="key">
         <view class="label">{{item.label}}</view>
         <block wx:if="{{item.isDate}}">
-          <picker mode="date" value="{{item.value || today}}" bindchange="onManualFieldDateChange" data-key="{{item.key}}">
-            <view class="picker">{{item.value || item.placeholder}}</view>
-          </picker>
-          <view class="field_actions">
-            <button size="mini" class="ghost" disabled="{{!item.value}}" data-key="{{item.key}}" bindtap="onClearManualFieldDate">清空日期</button>
+          <view class="picker_row">
+            <picker class="picker_cell" mode="date" start="{{dateMin}}" end="{{today}}" value="{{item.value || today}}" bindchange="onManualFieldDateChange" data-key="{{item.key}}">
+              <view class="picker">{{item.value || item.placeholder}}</view>
+            </picker>
+            <button size="mini" class="ghost date_clear_btn" disabled="{{!item.value}}" data-key="{{item.key}}" bindtap="onClearManualFieldDate">清空日期</button>
           </view>
         </block>
         <textarea

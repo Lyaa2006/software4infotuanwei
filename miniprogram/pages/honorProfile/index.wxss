@@ -49,6 +49,16 @@ page {
   width: 100%;
 }
 
+.picker_row {
+  display: flex;
+  gap: 12rpx;
+  align-items: center;
+}
+
+.picker_cell {
+  flex: 1;
+}
+
 .picker {
   min-height: 88rpx;
   background: #f6f6f6;
@@ -69,14 +79,13 @@ page {
   width: 100%;
 }
 
-.field_actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12rpx;
-}
-
 .small_btn {
   margin: 0;
+}
+
+.date_clear_btn {
+  flex: none;
+  white-space: nowrap;
 }
 
 .radio_item {

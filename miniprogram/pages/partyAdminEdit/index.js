@@ -8,6 +8,23 @@ function normalizeYmd(value) {
   return s;
 }
 
+function localTodayYmd() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function enrollmentDateMin(accountId) {
+  const s = String(accountId || "").trim();
+  const match = s.match(/^(\d{4})/);
+  const year = Number(match?.[1] || 0);
+  const currentYear = Number(localTodayYmd().slice(0, 4));
+  if (year >= 1900 && year <= currentYear) return `${year}-01-01`;
+  return "1900-01-01";
+}
+
 function validatePartyDateOrder(profile) {
   const pairs = [
     ["入党申请时间", normalizeYmd(profile?.applicationDate)],
@@ -57,6 +74,7 @@ Page({
     stages: [],
     stagePickerIndex: 0,
     today: "",
+    dateMin: "1900-01-01",
     statusTouched: false,
     nextReportTouched: false,
     nextTalkTouched: false,
@@ -96,14 +114,8 @@ Page({
       wx.navigateBack({ delta: 1 });
       return;
     }
-    const today = (() => {
-      const d = new Date();
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}`;
-    })();
-    this.setData({ today });
+    const today = localTodayYmd();
+    this.setData({ today, dateMin: enrollmentDateMin(this.data.accountId) });
     this.loadDetail();
   },
 
@@ -229,6 +241,20 @@ Page({
         content: `${invalidPartyDate[0]}格式错误或日期无效，应为真实的 YYYY-MM-DD`,
         showCancel: false,
       });
+      return;
+    }
+    const rangeError = [
+      ["入党申请时间", this.data.profile.applicationDate],
+      ["确定为入党积极分子时间", this.data.profile.activistDate],
+      ["确定为发展对象时间", this.data.profile.devObjectDate],
+      ["接收为预备党员时间", this.data.profile.probationaryDate],
+      ["预备期满一年时间", this.data.profile.probationaryFullYearDate],
+      ["转为正式党员时间", this.data.profile.fullMemberDate],
+      ["思想汇报截止日期", this.data.profile.nextReportDue],
+      ["谈话截止日期", this.data.profile.nextTalkDue],
+    ].map(([label, value]) => validateDateRange(label, value, this.data.dateMin, this.data.today)).find(Boolean);
+    if (rangeError) {
+      wx.showModal({ title: "保存失败", content: rangeError, showCancel: false });
       return;
     }
     const dateOrderError = validatePartyDateOrder(this.data.profile);

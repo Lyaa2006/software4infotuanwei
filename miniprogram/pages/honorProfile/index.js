@@ -16,12 +16,29 @@ function isValidYmd(ymd) {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() + 1 === m && dt.getUTCDate() === d;
 }
 
+function isDateWithinRange(value, min, max) {
+  const s = formatDate(value);
+  if (!s) return false;
+  if (min && s < min) return false;
+  if (max && s > max) return false;
+  return true;
+}
+
 function localTodayYmd() {
   const d = new Date();
   const y = d.getFullYear();
   const m = pad2(d.getMonth() + 1);
   const day = pad2(d.getDate());
   return `${y}-${m}-${day}`;
+}
+
+function enrollmentDateMin(accountId) {
+  const s = String(accountId || "").trim();
+  const match = s.match(/^(\d{4})/);
+  const year = Number(match?.[1] || 0);
+  const currentYear = Number(localTodayYmd().slice(0, 4));
+  if (year >= 1900 && year <= currentYear) return `${year}-01-01`;
+  return "1900-01-01";
 }
 
 function formatDateTime(ts) {
@@ -73,6 +90,7 @@ Page({
     accountId: "",
     userTitle: "个人荣誉主页",
     today: localTodayYmd(),
+    dateMin: "1900-01-01",
     isEditable: false,
     items: [],
     loading: false,
@@ -90,7 +108,7 @@ Page({
 
   onLoad(query) {
     const accountId = String(query?.accountId || "");
-    this.setData({ accountId, today: localTodayYmd() });
+    this.setData({ accountId, today: localTodayYmd(), dateMin: enrollmentDateMin(accountId) });
   },
 
   onShow() {
@@ -101,7 +119,7 @@ Page({
       return;
     }
     const isEditable = session.role === "student" && String(session.accountId) === String(this.data.accountId);
-    this.setData({ isEditable, today: localTodayYmd() });
+    this.setData({ isEditable, today: localTodayYmd(), dateMin: enrollmentDateMin(this.data.accountId) });
     this.reload();
   },
 
@@ -294,8 +312,8 @@ Page({
       wx.showToast({ title: "日期无效", icon: "none" });
       return;
     }
-    if (honorDate && honorDate > this.data.today) {
-      wx.showToast({ title: "获奖日期不能晚于今天", icon: "none" });
+    if (honorDate && !isDateWithinRange(honorDate, this.data.dateMin, this.data.today)) {
+      wx.showToast({ title: `日期需在${this.data.dateMin}到${this.data.today}之间`, icon: "none" });
       return;
     }
     this.setData({ saving: true });
